@@ -4,6 +4,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
+require('dotenv').config();
+
+const { generateWithDeepSeek } = require('./ai');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -144,6 +147,20 @@ app.delete('/api/plans/:id', auth, (req, res) => {
   const next = plans.filter(plan => !(plan.userId === req.user.id && plan.id === req.params.id));
   writeJson(PLANS_FILE, next);
   res.json({ ok: true });
+});
+
+app.post('/api/generate', async (req, res) => {
+  try {
+    const form = req.body.form;
+    if (!form || !form.destination || !form.days) {
+      return res.status(400).json({ error: '出行信息不完整' });
+    }
+    const plan = await generateWithDeepSeek(form);
+    res.json({ plan });
+  } catch (err) {
+    const status = err.status || 502;
+    res.status(status).json({ error: err.message || 'AI 生成失败' });
+  }
 });
 
 app.listen(PORT, () => {
