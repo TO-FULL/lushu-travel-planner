@@ -331,7 +331,7 @@
 
   const $ = selector => document.querySelector(selector);
 
-  const BACKEND_URL = window.LUSHU_BACKEND_URL || 'http://localhost:3001';
+  const BACKEND_URL = (window.LUSHU_BACKEND_URL || '').replace(/\/+$/, '');
 
   function getToken() {
     try {
