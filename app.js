@@ -352,7 +352,7 @@
 
   async function apiFetch(path, options = {}) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(), options.timeoutMs || 8000);
     try {
       const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
       const token = getToken();
@@ -2135,16 +2135,86 @@
   }
 
   async function generateWithRetry(form, attempts = 2) {
-    let lastError;
-    for (let i = 0; i < attempts; i++) {
-      try {
-        return generateItinerary(form);
-      } catch (err) {
-        lastError = err;
-        if (i < attempts - 1) await delay(500);
+    try {
+      const data = await apiFetch('/api/generate', {
+        method: 'POST',
+        body: JSON.stringify({ form }),
+        timeoutMs: 90000
+      });
+      if (data && data.plan) return normalizeCloudPlan(data.plan, form);
+      throw new Error('AI 返回的行程为空');
+    } catch (err) {
+      if (err.status && err.status >= 400 && err.status < 500) {
+        showToast(err.message || 'AI 生成失败');
       }
+      let lastError;
+      for (let i = 0; i < attempts; i++) {
+        try {
+          return generateItinerary(form);
+        } catch (localErr) {
+          lastError = localErr;
+          if (i < attempts - 1) await delay(500);
+        }
+      }
+      throw lastError;
     }
-    throw lastError;
+  }
+
+  function inferItemCat(item, slotKey) {
+    if (slotKey === 'lunch' || slotKey === 'dinner') return 'food';
+    const text = `${item.name || ''} ${item.desc || ''} ${(item.tags || []).join(' ')}`;
+    if (/拍照|夜景|日落|街拍|机位|出片/.test(text)) return 'photo';
+    if (/吃|餐|馆|火锅|小吃|美食|菜/.test(text)) return 'food';
+    return 'sight';
+  }
+
+  function normalizeCloudPlan(plan, form) {
+    if (!plan || !Array.isArray(plan.days) || !plan.days.length) {
+      throw new Error('AI 返回的行程格式不正确');
+    }
+    plan.id = plan.id || 'plan-' + Date.now();
+    plan.destination = plan.destination || form.destination;
+    plan.days = plan.days.map((day, index) => {
+      day.day = index + 1;
+      day.items = (day.items || []).map(item => {
+        const slotKey = SLOTS.some(slot => slot.key === item.slotKey) ? item.slotKey
+          : (SLOTS.some(slot => slot.key === item.slot) ? item.slot : 'morning');
+        const slotMeta = SLOTS.find(slot => slot.key === slotKey) || SLOTS[0];
+        const cat = item.cat || inferItemCat(item, slotKey);
+        return {
+          name: String(item.name || '').trim() || '自由漫步',
+          area: String(item.area || day.area || '市中心').trim(),
+          cost: Math.max(0, Math.round(Number(item.cost) || 0)),
+          duration: Math.max(30, Math.round(Number(item.duration) || 90)),
+          desc: String(item.desc || '').trim(),
+          tags: Array.isArray(item.tags) ? item.tags.map(String) : [],
+          slot: slotKey,
+          slotKey,
+          slotLabel: slotMeta.label,
+          time: String(item.time || slotMeta.time || ''),
+          cat
+        };
+      });
+      day.theme = day.theme || (index === 0 ? '初见城市' : '经典巡礼');
+      day.area = day.area || '市中心';
+      day.lodging = Math.max(100, Math.round(Number(day.lodging) || 400));
+      day.transport = Math.max(0, Math.round(Number(day.transport) || 100));
+      day.baseTransport = day.transport;
+      return day;
+    });
+    plan.dayCount = plan.days.length;
+    plan.people = Number(plan.people) || form.people || 2;
+    plan.budget = Number(plan.budget) || form.budget;
+    plan.budgetRange = plan.budgetRange || form.budgetRange;
+    plan.prefs = plan.prefs || form.prefs || [];
+    plan.notes = plan.notes || form.notes || '';
+    plan.crowd = plan.crowd || form.crowd;
+    plan.pace = plan.pace || form.pace;
+    plan.startDate = plan.startDate || form.startDate;
+    plan.endDate = plan.endDate || form.endDate;
+    plan.lodging = plan.lodging || { area: '市中心', type: '酒店', price: 400, desc: '市中心住宿，出行方便。', tags: ['交通便利'] };
+    plan.summary = plan.summary || {};
+    return dedupePlan(plan);
   }
 
   function sanitizeFilename(name) {
