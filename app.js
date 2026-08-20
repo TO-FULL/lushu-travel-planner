@@ -379,11 +379,12 @@
     try {
       const summaries = await apiFetch('/api/plans');
       const cloudPlans = [];
+      const user = currentUser();
       for (const summary of summaries) {
         try {
           const plan = await apiFetch('/api/plans/' + encodeURIComponent(summary.id));
           if (plan && plan.days && plan.days.length) {
-            cloudPlans.push({ id: plan.id, createdAt: plan.createdAt || '', plan });
+            cloudPlans.push({ id: plan.id, createdAt: plan.createdAt || '', owner: user, plan });
           }
         } catch (err) {
           /* 单条失败不阻塞整体 */
@@ -398,10 +399,13 @@
           byId.set(item.id, item);
         }
       });
-      const merged = [...byId.values()];
-      merged.sort((a, b) => String(b.plan.updatedAt || b.createdAt || '').localeCompare(String(a.plan.updatedAt || a.createdAt || '')));
-      safeSetItem(STORAGE.plans, merged.slice(0, 8));
-      updateSavedBadge();
+        const merged = [...byId.values()];
+        merged.sort((a, b) => String(b.plan.updatedAt || b.createdAt || '').localeCompare(String(a.plan.updatedAt || a.createdAt || '')));
+        const raw = localStorage.getItem(STORAGE.plans);
+        const all = raw ? JSON.parse(raw) : [];
+        const others = Array.isArray(all) ? all.filter(item => item.owner && item.owner !== user) : [];
+        safeSetItem(STORAGE.plans, [...merged.slice(0, 8), ...others].slice(0, 20));
+        updateSavedBadge();
     } catch (err) {
       /* 后端不可用时保留本地数据 */
     }
@@ -1223,10 +1227,12 @@
   }
 
   function getSavedPlans() {
+    const user = currentUser();
+    if (!user) return [];
     try {
       const raw = localStorage.getItem(STORAGE.plans);
       const list = raw ? JSON.parse(raw) : [];
-      return Array.isArray(list) ? list : [];
+      return Array.isArray(list) ? list.filter(item => item.owner === user) : [];
     } catch (err) {
       return [];
     }
@@ -1380,6 +1386,10 @@
 
   function saveCurrentPlan() {
     if (!currentPlan) return;
+    if (!currentUser()) {
+      showToast('请先登录后再保存');
+      return;
+    }
     const list = getSavedPlans();
     const existingIndex = list.findIndex(item => item.id === currentPlan.id);
     if (existingIndex >= 0) {
@@ -1391,6 +1401,7 @@
       } else {
         list.unshift({
           id: currentPlan.id,
+          owner: currentUser(),
           createdAt: new Date().toLocaleString('zh-CN'),
           plan: currentPlan
         });
@@ -1985,10 +1996,12 @@
   }
 
   function getHistory() {
+    const user = currentUser();
+    if (!user) return [];
     try {
       const raw = localStorage.getItem('lushu-history-v1');
       const list = raw ? JSON.parse(raw) : [];
-      return Array.isArray(list) ? list : [];
+      return Array.isArray(list) ? list.filter(item => item.owner === user) : [];
     } catch (err) {
       return [];
     }
@@ -1998,6 +2011,7 @@
     const list = getHistory();
     list.unshift({
       id: plan.id,
+      owner: currentUser(),
       createdAt: new Date().toLocaleString('zh-CN'),
       plan: JSON.parse(JSON.stringify(plan))
     });
@@ -2507,10 +2521,11 @@
         localStorage.removeItem(STORAGE.token);
       } catch (err) {
         /* 忽略 */
+      }
+      updateSavedBadge();
+      updateAuthUI();
+      showToast('已退出登录');
     }
-    updateAuthUI();
-    showToast('已退出登录');
-  }
 
   function updateAuthUI() {
     const user = currentUser();
