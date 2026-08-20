@@ -60,7 +60,17 @@ DEEPSEEK_API_KEY=sk-你的密钥
 
 - `PORT`：后端端口，默认 `3001`
 - `JWT_SECRET`：令牌签名密钥，生产环境务必修改
+- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`：配置后账号与行程数据持久化到 Supabase，不配置则使用内存存储
 
 ## 部署说明
 
 前端可直接部署到 Vercel 等静态托管。后端是常驻 Node 服务（带本地文件存储），需要部署到支持持久磁盘的平台（如 Railway、Render、Fly.io 或自己的服务器）；Vercel 的 Serverless 环境不保留文件存储，不适合直接承载该后端。
+
+### Supabase 持久化（推荐线上方案）
+
+1. 在 [supabase.com](https://supabase.com) 创建项目。
+2. 打开 SQL Editor，执行 `supabase/schema.sql` 建表。
+3. 在 Vercel 项目环境变量中添加：
+   - `SUPABASE_URL`：项目的 URL
+   - `SUPABASE_SERVICE_ROLE_KEY`：项目 Settings → API → service_role 密钥
+4. 重新部署。配置后注册账号、保存的行程都会持久化到 Supabase；未配置时自动回退内存存储。
