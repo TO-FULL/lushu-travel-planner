@@ -31,6 +31,18 @@ window.LUSHU_BACKEND_URL = 'https://your-backend.example.com';
 
 后端不可用时，登录与行程保存会自动降级为浏览器本地模式，不影响使用。
 
+## 接入 DeepSeek 大模型
+
+配置 `server/.env`（参考 `server/.env.example`）：
+
+```env
+DEEPSEEK_API_KEY=sk-你的密钥
+```
+
+在 [platform.deepseek.com](https://platform.deepseek.com) 注册并创建 API Key 后填入即可。启用后，生成行程会优先由 DeepSeek 根据目的地、预算、偏好、人群和节奏生成真实合理的行程；未配置 Key 或 AI 服务不可用时，自动回退到内置的本地规划算法，功能不受影响。
+
+## 后端接口
+
 ## 后端接口
 
 - `POST /api/auth/register` 注册（返回 JWT）
@@ -40,6 +52,7 @@ window.LUSHU_BACKEND_URL = 'https://your-backend.example.com';
 - `GET /api/plans/:id` 行程详情
 - `POST /api/plans` 保存 / 更新行程
 - `DELETE /api/plans/:id` 删除行程
+- `POST /api/generate` 调用 DeepSeek 生成行程（需要配置 `DEEPSEEK_API_KEY`）
 
 请求受保护接口时，请在请求头携带 `Authorization: Bearer <token>`。
 
