@@ -7,7 +7,8 @@
     lastPlan: 'lushu-last-plan-v1',
     theme: 'lushu-theme-v1',
     users: 'lushu-users-v1',
-    session: 'lushu-session-v1'
+    session: 'lushu-session-v1',
+    token: 'lushu-token-v1'
   };
 
   const ICONS = {
@@ -329,6 +330,100 @@
   ];
 
   const $ = selector => document.querySelector(selector);
+
+  const BACKEND_URL = window.LUSHU_BACKEND_URL || 'http://localhost:3001';
+
+  function getToken() {
+    try {
+      return localStorage.getItem(STORAGE.token) || '';
+    } catch (err) {
+      return '';
+    }
+  }
+
+  function setToken(token) {
+    try {
+      if (token) localStorage.setItem(STORAGE.token, token);
+      else localStorage.removeItem(STORAGE.token);
+    } catch (err) {
+      /* 忽略 */
+    }
+  }
+
+  async function apiFetch(path, options = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+      const token = getToken();
+      if (token) headers.Authorization = 'Bearer ' + token;
+      const res = await fetch(BACKEND_URL + path, {
+        ...options,
+        headers,
+        signal: controller.signal
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(data.error || '请求失败');
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function cloudSyncPlans() {
+    if (!currentUser()) return;
+    try {
+      const summaries = await apiFetch('/api/plans');
+      const cloudPlans = [];
+      for (const summary of summaries) {
+        try {
+          const plan = await apiFetch('/api/plans/' + encodeURIComponent(summary.id));
+          if (plan && plan.days && plan.days.length) {
+            cloudPlans.push({ id: plan.id, createdAt: plan.createdAt || '', plan });
+          }
+        } catch (err) {
+          /* 单条失败不阻塞整体 */
+        }
+      }
+      const local = getSavedPlans();
+      const byId = new Map();
+      local.forEach(item => byId.set(item.id, item));
+      cloudPlans.forEach(item => {
+        const existing = byId.get(item.id);
+        if (!existing || String(item.plan.updatedAt || '') > String(existing.plan.updatedAt || '')) {
+          byId.set(item.id, item);
+        }
+      });
+      const merged = [...byId.values()];
+      merged.sort((a, b) => String(b.plan.updatedAt || b.createdAt || '').localeCompare(String(a.plan.updatedAt || a.createdAt || '')));
+      safeSetItem(STORAGE.plans, merged.slice(0, 8));
+      updateSavedBadge();
+    } catch (err) {
+      /* 后端不可用时保留本地数据 */
+    }
+  }
+
+  async function cloudUpsertPlan(plan) {
+    if (!currentUser() || !plan) return;
+    try {
+      await apiFetch('/api/plans', { method: 'POST', body: JSON.stringify({ plan }) });
+    } catch (err) {
+      /* 云端同步失败时本地仍然保留 */
+    }
+  }
+
+  async function cloudDeletePlan(id) {
+    if (!currentUser() || !id) return;
+    try {
+      await apiFetch('/api/plans/' + encodeURIComponent(id), { method: 'DELETE' });
+    } catch (err) {
+      /* 忽略 */
+    }
+  }
 
   function pickLodging(city, budget, days) {
     const pool = (city && LODGING_POOL[city.name]) || GENERIC_LODGING;
@@ -1289,28 +1384,30 @@
     const existingIndex = list.findIndex(item => item.id === currentPlan.id);
     if (existingIndex >= 0) {
       list[existingIndex].plan = currentPlan;
-      list[existingIndex].updatedAt = new Date().toLocaleString('zh-CN');
-      safeSetItem(STORAGE.plans, list);
-      updateSavedBadge();
-      showToast('行程已更新');
-      return;
+        list[existingIndex].updatedAt = new Date().toLocaleString('zh-CN');
+        safeSetItem(STORAGE.plans, list);
+        updateSavedBadge();
+        showToast('行程已更新');
+      } else {
+        list.unshift({
+          id: currentPlan.id,
+          createdAt: new Date().toLocaleString('zh-CN'),
+          plan: currentPlan
+        });
+        safeSetItem(STORAGE.plans, list.slice(0, 8));
+        updateSavedBadge();
+        showToast('已保存到「我的行程」');
+      }
+      cloudUpsertPlan(currentPlan);
     }
-    list.unshift({
-      id: currentPlan.id,
-      createdAt: new Date().toLocaleString('zh-CN'),
-      plan: currentPlan
-    });
-    safeSetItem(STORAGE.plans, list.slice(0, 8));
-    updateSavedBadge();
-    showToast('已保存到「我的行程」');
-  }
 
-  function removeSavedPlan(id) {
-    const list = getSavedPlans().filter(item => item.id !== id);
-    safeSetItem(STORAGE.plans, list);
-    renderSavedList();
-    updateSavedBadge();
-  }
+    function removeSavedPlan(id) {
+      const list = getSavedPlans().filter(item => item.id !== id);
+      safeSetItem(STORAGE.plans, list);
+      renderSavedList();
+      updateSavedBadge();
+      cloudDeletePlan(id);
+    }
 
   function buildPlanText(plan, customTitle) {
     const title = customTitle || plan.title || `${plan.destination} · ${plan.dayCount || plan.days.length} 天 ${plan.people || 2} 人行程`;
@@ -2259,6 +2356,9 @@
     renderSavedList();
     $('#savedModal').hidden = false;
     document.body.style.overflow = 'hidden';
+    cloudSyncPlans().then(() => {
+      if (!$('#savedModal').hidden) renderSavedList();
+    });
   }
 
   function closeSavedModal() {
@@ -2301,9 +2401,8 @@
     safeSetItem(STORAGE.users, users);
   }
 
-  function currentUser() {
-    const name = localStorage.getItem(STORAGE.session) || '';
-    return name && getUsers()[name] ? name : '';
+    function currentUser() {
+      return localStorage.getItem(STORAGE.session) || '';
   }
 
   function setSession(name) {
@@ -2314,9 +2413,9 @@
     }
   }
 
-  function registerUser(username, password) {
-    const users = getUsers();
-    if (users[username]) return '该用户名已被注册';
+    function registerUserLocal(username, password) {
+      const users = getUsers();
+      if (users[username]) return '该用户名已被注册';
     const salt = Math.random().toString(36).slice(2, 10);
     users[username] = { salt, hash: hashPassword(password, salt), createdAt: Date.now() };
     saveUsers(users);
@@ -2324,19 +2423,20 @@
     return '';
   }
 
-  function loginUser(username, password) {
-    const account = getUsers()[username];
-    if (!account) return '用户名不存在';
+    function loginUserLocal(username, password) {
+      const account = getUsers()[username];
+      if (!account) return '用户名不存在';
     if (account.hash !== hashPassword(password, account.salt)) return '密码不正确';
     setSession(username);
     return '';
   }
 
-  function logoutUser() {
-    try {
-      localStorage.removeItem(STORAGE.session);
-    } catch (err) {
-      /* 忽略 */
+    function logoutUser() {
+      try {
+        localStorage.removeItem(STORAGE.session);
+        localStorage.removeItem(STORAGE.token);
+      } catch (err) {
+        /* 忽略 */
     }
     updateAuthUI();
     showToast('已退出登录');
@@ -2384,7 +2484,7 @@
     $('#authError').hidden = true;
   }
 
-  function submitAuth() {
+  async function submitAuth() {
     const username = $('#authUsername').value.trim();
     const password = $('#authPassword').value;
     if (!username || !password) {
@@ -2395,17 +2495,44 @@
       showAuthError('用户名不能超过 20 个字符');
       return;
     }
-    const error = authMode === 'register'
-      ? (password.length < 4 ? '密码至少需要 4 位' : registerUser(username, password))
-      : loginUser(username, password);
-    if (error) {
-      showAuthError(error);
+    if (password.length < 4) {
+      showAuthError('密码至少需要 4 位');
       return;
     }
-    $('#authPassword').value = '';
-    closeLoginModal();
-    updateAuthUI();
-    showToast(authMode === 'register' ? '注册成功，已自动登录' : '登录成功');
+    const submitBtn = $('#authSubmit');
+    submitBtn.disabled = true;
+    try {
+      const path = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+      const data = await apiFetch(path, {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+      });
+      setToken(data.token);
+      setSession(data.username);
+      $('#authPassword').value = '';
+      closeLoginModal();
+      updateAuthUI();
+      cloudSyncPlans();
+      showToast(authMode === 'register' ? '注册成功，已自动登录' : '登录成功');
+    } catch (err) {
+      if (err.status && err.status >= 400 && err.status < 500) {
+        showAuthError(err.message);
+      } else {
+        const localError = authMode === 'register'
+          ? registerUserLocal(username, password)
+          : loginUserLocal(username, password);
+        if (localError) {
+          showAuthError(localError);
+        } else {
+          $('#authPassword').value = '';
+          closeLoginModal();
+          updateAuthUI();
+          showToast('后端未连接，已切换本地模式登录');
+        }
+      }
+    } finally {
+      submitBtn.disabled = false;
+    }
   }
 
   function syncDaysFromDates() {
@@ -2489,6 +2616,7 @@
       updateSavedBadge();
       setupMapTabs();
       updateAuthUI();
+      if (currentUser()) cloudSyncPlans();
 
       $('#daysMinus').addEventListener('click', () => {
       const input = $('#days');
