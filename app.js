@@ -2601,7 +2601,9 @@
       cloudSyncPlans();
       showToast(authMode === 'register' ? '注册成功，已自动登录' : '登录成功');
     } catch (err) {
-      if (err.status && err.status >= 400 && err.status < 500) {
+      if (err.status && err.status >= 500) {
+        showAuthError('服务暂时不可用，请稍后再试');
+      } else if (err.status && err.status >= 400 && err.status < 500) {
         showAuthError(err.message);
       } else {
         const localError = authMode === 'register'

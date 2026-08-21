@@ -20,7 +20,8 @@ const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_
 
 async function findUser(username) {
   if (supabase) {
-    const { data } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
+    const { data, error } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
+    if (error) throw new Error('查询用户失败：' + error.message);
     return data || null;
   }
   return users.find(user => user.username === username) || null;
@@ -29,6 +30,7 @@ async function findUser(username) {
 async function insertUser(user) {
   if (supabase) {
     const { error } = await supabase.from('users').insert(user);
+    if (error) throw new Error('写入用户失败：' + error.message);
     return !error;
   }
   users.push(user);
@@ -42,6 +44,7 @@ async function listPlansForUser(userId) {
       .select('id, created_at, updated_at, data')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false });
+    if (error) throw new Error('读取行程失败：' + error.message);
     if (error || !data) return [];
     return data.map(row => ({
       id: row.id,
@@ -58,12 +61,13 @@ async function listPlansForUser(userId) {
 
 async function getPlanForUser(userId, id) {
   if (supabase) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('plans')
       .select('data')
       .eq('user_id', userId)
       .eq('id', id)
       .maybeSingle();
+    if (error) throw new Error('读取行程失败：' + error.message);
     return data ? data.data : null;
   }
   return plans.find(plan => plan.userId === userId && plan.id === id) || null;
@@ -78,11 +82,13 @@ async function upsertPlanForUser(userId, plan, now) {
         .update({ data: plan, updated_at: now })
         .eq('user_id', userId)
         .eq('id', plan.id);
+      if (error) throw new Error('更新行程失败：' + error.message);
       return !error;
     }
     const { error } = await supabase
       .from('plans')
       .insert({ id: plan.id, user_id: userId, data: plan, created_at: now, updated_at: now });
+    if (error) throw new Error('保存行程失败：' + error.message);
     return !error;
   }
   const existing = plans.find(item => item.userId === userId && item.id === plan.id);
@@ -101,6 +107,7 @@ async function deletePlanForUser(userId, id) {
       .delete()
       .eq('user_id', userId)
       .eq('id', id);
+    if (error) throw new Error('删除行程失败：' + error.message);
     return !error;
   }
   const index = plans.findIndex(item => item.userId === userId && item.id === id);
@@ -162,7 +169,7 @@ app.post('/api/auth/register', async (req, res) => {
     res.json({ token, username: user.username });
   } catch (err) {
     console.error('register error:', err);
-    res.status(500).json({ error: '服务器繁忙，请稍后重试' });
+    res.status(500).json({ error: (err && err.message) ? err.message : '服务器繁忙，请稍后重试' });
   }
 });
 
@@ -178,7 +185,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({ token, username: user.username });
   } catch (err) {
     console.error('login error:', err);
-    res.status(500).json({ error: '服务器繁忙，请稍后重试' });
+    res.status(500).json({ error: (err && err.message) ? err.message : '服务器繁忙，请稍后重试' });
   }
 });
 
