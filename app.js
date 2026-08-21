@@ -360,6 +360,7 @@
       const res = await fetch(BACKEND_URL + path, {
         ...options,
         headers,
+        credentials: 'include',
         signal: controller.signal
       });
       const data = await res.json().catch(() => ({}));

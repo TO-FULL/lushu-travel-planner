@@ -123,6 +123,17 @@ function auth(req, res, next) {
   }
 }
 
+function resolveUser(req) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    return null;
+  }
+}
+
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'lushu-api' }));
 
 app.post('/api/auth/register', async (req, res) => {
@@ -150,6 +161,7 @@ app.post('/api/auth/register', async (req, res) => {
     const token = jwt.sign({ id: user.id, username }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username });
   } catch (err) {
+    console.error('register error:', err);
     res.status(500).json({ error: '服务器繁忙，请稍后重试' });
   }
 });
@@ -165,6 +177,7 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign({ id: user.id, username }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username });
   } catch (err) {
+    console.error('login error:', err);
     res.status(500).json({ error: '服务器繁忙，请稍后重试' });
   }
 });
@@ -173,8 +186,10 @@ app.get('/api/auth/me', auth, (req, res) => {
   res.json({ username: req.user.username });
 });
 
-app.get('/api/plans', auth, async (req, res) => {
-  const userPlans = await listPlansForUser(req.user.id);
+app.get('/api/plans', async (req, res) => {
+  const user = resolveUser(req);
+  if (!user) return res.json([]);
+  const userPlans = await listPlansForUser(user.id);
   res.json(userPlans.map(entry => {
     const plan = entry.plan;
     return {
