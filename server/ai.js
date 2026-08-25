@@ -136,6 +136,10 @@ async function generateWithDeepSeek(form) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90000);
   try {
+    let userContent = JSON.stringify(form);
+    if (form.parsedTags && form.parsedTags.length) {
+      userContent += `\n\n补充需求已解析为以下约束标签，生成行程时必须全部采纳：${form.parsedTags.join('、')}`;
+    }
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
@@ -147,7 +151,7 @@ async function generateWithDeepSeek(form) {
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: JSON.stringify(form) }
+          { role: 'user', content: userContent }
         ],
         temperature: 0.7,
         max_tokens: 6000

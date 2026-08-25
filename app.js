@@ -927,6 +927,7 @@
   }
 
   let currentPlan = null;
+  let lastForm = null;
   let toastTimer = null;
   let isGenerating = false;
   let stopRequested = false;
@@ -1035,9 +1036,6 @@
   }
 
   function tipFor(plan) {
-    const extras = [];
-    if (plan.notes) extras.push(`补充需求：${plan.notes}`);
-    if (extras.length) return `已纳入考虑：${extras.join('；')}`;
     if (plan.prefs.length === 1) {
       return `这次行程重点围绕「${plan.prefs[0]}」展开，其他时段留给了自由漫步，适合轻松出发。`;
     }
@@ -1829,13 +1827,15 @@
     const dayCount = plan.dayCount || plan.days.length;
     const dateText = plan.startDate && plan.endDate ? `${plan.startDate} 至 ${plan.endDate}` : `${dayCount} 天`;
     $('#resultTitle').textContent = `${plan.destination} · ${dayCount} 天 ${plan.people || 2} 人行程`;
+    const form = lastForm || plan;
+    const range = form.budgetRange || plan.budgetRange;
+    const people = form.people || plan.people || 2;
+    const prefs = (form.prefs && form.prefs.length) ? form.prefs : (plan.prefs || []);
     $('#resultTags').innerHTML = [
-      `预算区间 ${fmtMoney(plan.budgetRange.min)} - ${fmtMoney(plan.budgetRange.max)}`,
+      `预算区间 ${fmtMoney(range.min)} - ${fmtMoney(range.max)}`,
       dateText,
-      `${plan.people || 2} 人`,
-      plan.crowd || '情侣',
-      plan.pace || '深度打卡',
-      ...plan.prefs
+      `${people} 人`,
+      ...prefs
     ].map(tag => `<span class="result-tag">${tag}</span>`).join('');
   }
 
@@ -2318,7 +2318,10 @@
       return;
     }
     hideFormError();
+    lastForm = form;
+    form.parsedTags = collectNoteTags();
     renderAcceptedTags();
+    if (form.parsedTags.length) showToast('需求已被识别');
     isGenerating = true;
     stopRequested = false;
     setGenerateLoading(true);
