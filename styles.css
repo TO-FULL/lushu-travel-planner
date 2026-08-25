@@ -2676,3 +2676,81 @@ button {
     flex-direction: column;
   }
 }
+
+/* 补充需求解析标签 */
+.parsed-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 22px;
+  margin-top: 8px;
+}
+
+.parsed-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(15, 107, 91, 0.1);
+  color: var(--green-deep);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* 景点间交通建议 */
+.transfer-note {
+  color: var(--green-deep);
+  font-weight: 700;
+}
+
+/* 首屏三步融合 */
+.hero-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 26px;
+  max-width: 720px;
+}
+
+.hero-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+}
+
+.hero-step-num {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--coral);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.hero-step strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.hero-step span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+@media (max-width: 720px) {
+  .hero-steps {
+    grid-template-columns: 1fr;
+  }
+}

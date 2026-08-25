@@ -42,15 +42,16 @@
   ];
 
   const PREF_META = {
-    '休闲': { cats: ['sight'], label: '休闲' },
     '美食': { cats: ['food'], label: '美食' },
-    '打卡': { cats: ['photo'], label: '打卡' }
+    '历史': { cats: ['sight'], label: '历史' },
+    '自然': { cats: ['sight'], label: '自然' },
+    '休闲': { cats: ['sight'], label: '休闲' }
   };
 
   const TEMPLATES = {
-    weekend: { destination: '杭州', startOffset: 0, endOffset: 2, people: 2, days: 3, budgetMin: 2000, budgetMax: 4000, prefs: ['休闲', '美食', '打卡'], notes: '节奏放松一点，适合周末出发' },
-    long: { destination: '成都', startOffset: 0, endOffset: 6, people: 2, days: 7, budgetMin: 8000, budgetMax: 15000, prefs: ['美食', '打卡', '休闲'], notes: '跨省长途，每天不用太赶' },
-    deep: { destination: '上海', startOffset: 0, endOffset: 4, people: 1, days: 5, budgetMin: 6000, budgetMax: 10000, prefs: ['美食', '打卡', '休闲'], notes: '城市深度游，博物馆和街区都想去' }
+    weekend: { destination: '杭州', startOffset: 0, endOffset: 2, people: 2, days: 3, budgetMin: 2000, budgetMax: 4000, prefs: ['休闲', '美食'], notes: '节奏放松一点，适合周末出发' },
+    long: { destination: '成都', startOffset: 0, endOffset: 6, people: 2, days: 7, budgetMin: 8000, budgetMax: 15000, prefs: ['美食', '休闲'], notes: '跨省长途，每天不用太赶' },
+    deep: { destination: '上海', startOffset: 0, endOffset: 4, people: 1, days: 5, budgetMin: 6000, budgetMax: 10000, prefs: ['美食', '历史'], notes: '城市深度游，博物馆和街区都想去' }
   };
 
   const DEST_TIPS = {
@@ -937,27 +938,6 @@
   function renderInspiration() {
     const datalist = $('#cityOptions');
     datalist.innerHTML = CITIES.map(city => `<option value="${city.name}"></option>`).join('');
-
-    const grid = $('#cityGrid');
-    grid.innerHTML = CITIES.slice(0, 8).map(city => {
-      const image = city.image.replace(/&/g, '&amp;');
-      return `
-        <button class="city-card" type="button" data-city="${city.name}" style="--city-img: url('${image}')" aria-label="选择 ${city.name}">
-          <span class="city-card-body">
-            <span class="city-card-name">${city.name}</span>
-            <span class="city-card-meta">${city.region} · ${city.tagline}</span>
-          </span>
-        </button>`;
-    }).join('');
-
-    grid.querySelectorAll('.city-card').forEach(button => {
-      button.addEventListener('click', () => {
-        $('#destination').value = button.dataset.city;
-        hideFormError();
-        saveFormState();
-        scrollToEl($('#planner'));
-      });
-    });
   }
 
   function itemTypeLabel(cat) {
@@ -1064,8 +1044,15 @@
     return `「${plan.prefs.slice(0, 2).join('」和「')}」偏好已优先加权，每天集中在同一片区，减少来回折腾。`;
   }
 
-  function itemHTML(plan, item, dayIndex, itemIndex) {
+  function itemHTML(plan, item, dayIndex, itemIndex, prevItem) {
     const fixed = Boolean(item.fixed);
+    let transferText = '';
+    if (!fixed && prevItem) {
+      const city = cityFor(plan);
+      const minutes = transferMinutes(city, prevItem.area, item.area);
+      const mode = minutes <= 15 ? '步行' : (minutes <= 35 ? '地铁/公交' : '打车');
+      transferText = `${mode}约 ${minutes} 分钟`;
+    }
     return `
       <article class="timeline-item${fixed ? ' is-fixed' : ''}${item.done ? ' is-done' : ''}" draggable="${fixed ? 'false' : 'true'}" data-day="${dayIndex}" data-index="${itemIndex}" data-item="true">
         ${fixed ? '' : '<span class="drag-handle" aria-hidden="true">⋮⋮</span>'}
@@ -1099,6 +1086,7 @@
             <span class="item-type type-${item.cat}">${itemTypeLabel(item.cat)}</span>
             <span>${item.area}</span>
             ${item.duration ? `<span>约 ${item.duration} 分钟</span>` : ''}
+            ${transferText ? `<span class="transfer-note">↗ ${transferText}</span>` : ''}
             ${!fixed && item.cost > 0 ? `
               <label class="book-toggle">
                 <input type="checkbox" data-book-item="${itemIndex}" data-day="${dayIndex}" ${item.booked ? 'checked' : ''}>
@@ -1143,7 +1131,10 @@
     const mode = plan.transportMode && plan.transportMode[index] ? plan.transportMode[index] : 'transit';
     const itemsHTML = [
       itemHTML(plan, topItem, index, -1),
-      ...shownItems.map((item, itemIndex) => itemHTML(plan, item, index, itemIndex)),
+      ...shownItems.map((item, itemIndex) => {
+        const prevItem = itemIndex > 0 ? shownItems[itemIndex - 1] : topItem;
+        return itemHTML(plan, item, index, itemIndex, prevItem);
+      }),
       itemHTML(plan, stayItem, index, -2)
     ].join('');
     return `
@@ -1213,8 +1204,6 @@
     $('#resultSummary').innerHTML = summaryHTML(plan);
     $('#dayCards').innerHTML = plan.days.map((day, index) => dayCardHTML(plan, day, index)).join('');
     $('#skeletonWrap').hidden = true;
-    renderMapTabs(plan);
-    renderMap(plan, mapDayIndex);
     updateContextUI();
     if (openStates) {
       document.querySelectorAll('.day-card').forEach((card, index) => {
@@ -1268,13 +1257,11 @@
       budgetMin: min,
       budgetMax: max,
       budget: clamp(Math.round((min + max) / 2), 500, 100000),
-      budgetRange: { min, max },
-      prefs: [...document.querySelectorAll('input[name="pref"]:checked')].map(input => input.value),
-      notes: $('#notes').value.trim(),
-      crowd: (document.querySelector('input[name="crowd"]:checked') || {}).value || '情侣',
-      pace: (document.querySelector('input[name="pace"]:checked') || {}).value || '深度打卡'
-    };
-  }
+        budgetRange: { min, max },
+        prefs: [...document.querySelectorAll('input[name="pref"]:checked')].map(input => input.value),
+        notes: $('#notes').value.trim()
+      };
+    }
 
   function applyForm(form) {
     if (!form) return;
@@ -1475,7 +1462,8 @@
 
   function validateForm(form) {
     if (!form.destination) return '先告诉我你要去哪儿';
-    if (!form.prefs.length) return '至少选择一个出行偏好';
+    if (!form.prefs.length) return '至少选择一个核心偏好';
+    if (form.prefs.length > 2) return '核心偏好最多选 2 项';
     if (!form.startDate || !form.endDate) return '请选择出行起止日期';
     if (form.startDate > form.endDate) return '返回日期不能早于出发日期';
     if (form.budgetMin > form.budgetMax) return '预算下限不能高于上限';
@@ -1855,7 +1843,6 @@
     currentPlan = plan;
     renderResultHead(plan);
     $('#resultSummary').innerHTML = '';
-    $('#mapWrap').hidden = true;
     $('#dayCards').innerHTML = '';
     $('#skeletonWrap').hidden = false;
     $('#skeletonWrap').innerHTML = plan.days.map(() => '<div class="skeleton-card"></div>').join('');
@@ -1878,8 +1865,6 @@
     $('#skeletonWrap').hidden = true;
     $('#skeletonWrap').innerHTML = '';
     $('#resultSummary').innerHTML = summaryHTML(plan);
-    renderMapTabs(plan);
-    renderMap(plan, 0);
     updateContextUI();
     applyPlanSearch();
   }
@@ -2461,6 +2446,33 @@
     }, 2400);
   }
 
+  const NOTE_KEYWORDS = [
+    { pattern: /老人|长辈|父母/, label: '家庭友好' },
+    { pattern: /小孩|儿童|亲子|带娃/, label: '家庭友好' },
+    { pattern: /爬山|徒步|登山/, label: '户外徒步' },
+    { pattern: /夜景|灯光|夜游/, label: '夜景打卡' },
+    { pattern: /拍照|摄影|出片/, label: '摄影出片' },
+    { pattern: /不辣|吃辣|辣/, label: '口味偏好' },
+    { pattern: /网红|人多|排队/, label: '错峰出行' },
+    { pattern: /慢|放松|悠闲/, label: '慢节奏' },
+    { pattern: /寺庙|博物馆|历史|古迹/, label: '人文历史' }
+  ];
+
+  function parseNoteTags() {
+    const text = $('#notes').value;
+    const container = $('#parsedTags');
+    if (!container) return;
+    if (!text.trim()) {
+      container.innerHTML = '';
+      return;
+    }
+    const labels = [];
+    NOTE_KEYWORDS.forEach(rule => {
+      if (rule.pattern.test(text) && !labels.includes(rule.label)) labels.push(rule.label);
+    });
+    container.innerHTML = labels.map(label => `<span class="parsed-tag">${label}</span>`).join('');
+  }
+
   let authMode = 'login';
 
   function hashPassword(password, salt) {
@@ -2702,7 +2714,6 @@
     if (!$('#endDate').value) $('#endDate').value = addDaysOffset(2);
       updateBudgetNote();
       updateSavedBadge();
-      setupMapTabs();
       updateAuthUI();
       if (currentUser()) cloudSyncPlans();
 
@@ -2741,10 +2752,20 @@
       saveFormState();
     });
     $('#people').addEventListener('input', saveFormState);
-    $('#notes').addEventListener('input', saveFormState);
+    $('#notes').addEventListener('input', () => {
+      parseNoteTags();
+      saveFormState();
+    });
     $('#destination').addEventListener('input', saveFormState);
-    document.querySelectorAll('input[name="crowd"], input[name="pace"]').forEach(input => {
-      input.addEventListener('change', saveFormState);
+    document.querySelectorAll('input[name="pref"]').forEach(input => {
+      input.addEventListener('change', () => {
+        const checked = [...document.querySelectorAll('input[name="pref"]:checked')];
+        if (checked.length > 2) {
+          input.checked = false;
+          showToast('核心偏好最多选 2 项');
+        }
+        saveFormState();
+      });
     });
     $('#startDate').addEventListener('change', syncDaysFromDates);
     $('#endDate').addEventListener('change', syncDaysFromDates);
@@ -2765,17 +2786,8 @@
         showToast('已填入快捷模板，可以继续调整');
       });
     });
-    document.querySelectorAll('.example-card').forEach(button => {
-      button.addEventListener('click', () => {
-        applyTemplate(button.dataset.example);
-        handleGenerate();
-      });
-    });
-
     $('#heroStart').addEventListener('click', () => scrollToEl($('#planner')));
     $('#navPlan').addEventListener('click', () => scrollToEl($('#planner')));
-    $('#heroInspo').addEventListener('click', () => scrollToEl($('#destinations')));
-    $('#navDestinations').addEventListener('click', () => scrollToEl($('#destinations')));
 
     $('#themeToggle').addEventListener('click', toggleTheme);
 
@@ -2801,36 +2813,18 @@
       if (event.target === $('#savedModal')) closeSavedModal();
     });
 
-      $('#savePlanBtn').addEventListener('click', saveCurrentPlan);
-      $('#copyPlanBtn').addEventListener('click', copyCurrentPlan);
-      $('#exportPlanBtn').addEventListener('click', exportCurrentPlan);
-      $('#resultSummary').addEventListener('click', event => {
+    $('#savePlanBtn').addEventListener('click', saveCurrentPlan);
+    $('#resultSummary').addEventListener('click', event => {
         if (event.target.closest('#switchLodgingBtn')) switchLodging();
       });
-      $('#historyBtn').addEventListener('click', openHistoryModal);
-    $('#duplicateBtn').addEventListener('click', duplicatePlan);
     $('#regenerateBtn').addEventListener('click', handleGenerate);
     $('#changeDestBtn').addEventListener('click', () => openAdjustModal('destination'));
     $('#changeDaysBtn').addEventListener('click', () => openAdjustModal('days'));
-    $('#clearContextBtn').addEventListener('click', () => {
-      contextHistory = [];
-      updateContextUI();
-      if (currentPlan) {
-        currentPlan.context = [];
-        persistLastPlan(currentPlan);
-      }
-      showToast('已清空微调上下文');
-    });
     $('#adjustClose').addEventListener('click', closeAdjustModal);
     $('#adjustCancel').addEventListener('click', closeAdjustModal);
     $('#adjustConfirm').addEventListener('click', confirmAdjust);
     $('#adjustModal').addEventListener('click', event => {
       if (event.target === $('#adjustModal')) closeAdjustModal();
-    });
-    $('#backupBtn').addEventListener('click', backupData);
-    $('#historyClose').addEventListener('click', closeHistoryModal);
-    $('#historyModal').addEventListener('click', event => {
-      if (event.target === $('#historyModal')) closeHistoryModal();
     });
       $('#planSearch').addEventListener('input', applyPlanSearch);
       $('#planSearch').addEventListener('focus', applyPlanSearch);
