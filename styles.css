@@ -2785,3 +2785,115 @@ button {
     width: 100%;
   }
 }
+
+/* 顶层规划框架侧边栏 */
+.framework-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.fw-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+
+.fw-row strong {
+  flex-shrink: 0;
+  min-width: 34px;
+  color: var(--green-deep);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fw-row span {
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fw-lodging {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-alt);
+}
+
+.fw-lodging > strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.fw-price {
+  display: block;
+  margin-top: 2px;
+  color: var(--coral-deep);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fw-lodging p {
+  margin: 6px 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fw-cons {
+  color: var(--muted);
+}
+
+.fw-example {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fw-food {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.fw-food:last-child {
+  border-bottom: 0;
+}
+
+.fw-food strong {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.fw-food span {
+  flex-shrink: 0;
+  color: var(--green-deep);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fw-food p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.disclaimer {
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}

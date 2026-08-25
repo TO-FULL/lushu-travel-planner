@@ -965,19 +965,12 @@
       </div>`;
   }
 
-  function summaryHTML(plan) {
+    function summaryHTML(plan) {
     const usedPct = Math.min(100, Math.max(4, Math.round(plan.summary.totalCost / plan.budget * 100)));
-    const totalKm = plan.days.reduce((sum, day) => sum + (day.totalDistanceKm || 0), 0);
-    const totalTransit = plan.days.reduce((sum, day) => sum + (day.transitMinutes || 0), 0);
-    const stayInfo = lodgingForPlan(plan);
-    const rows = [
-      ['餐饮', plan.summary.breakdown.food, 'var(--coral)'],
-      ['门票', plan.summary.breakdown.sight, 'var(--green)'],
-      ['打卡项目', plan.summary.breakdown.photo, 'var(--sky)'],
-      ['住宿预留', plan.summary.breakdown.lodging, '#7a6aa8'],
-      ['交通预留', plan.summary.breakdown.transport, '#5f7d8c'],
-      ['机动预算', plan.summary.remaining, 'var(--amber)']
-    ];
+    const framework = plan.framework || buildLocalFramework(plan);
+    const transport = framework.transport || {};
+    const lodgingAreas = framework.lodgingAreas || [];
+    const foodList = framework.foodList || [];
     return `
       <p class="summary-label">预算使用</p>
       <div class="budget-block">
@@ -987,55 +980,68 @@
         </div>
         <div class="budget-bar"><span class="budget-bar-fill" style="width:${usedPct}%"></span></div>
       </div>
-      <p class="breakdown-title">动线概况</p>
-      <div class="route-block">
-        <div class="route-item">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-          <div><strong>${Math.round(totalKm * 10) / 10} km</strong><span>全程移动里程</span></div>
-        </div>
-        <div class="route-item">
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a4 4 0 0 1 4 4v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M4 11h16M8 17v2M16 17v2"/></svg>
-          <div><strong>约 ${totalTransit} 分钟</strong><span>预计路上时间</span></div>
-        </div>
-      </div>
       <div class="stat-grid">
         <div class="stat-cell"><span class="stat-value">${fmtMoney(plan.summary.avgDay)}</span><span class="stat-name">日均安排</span></div>
         <div class="stat-cell"><span class="stat-value">${plan.summary.itemsCount}</span><span class="stat-name">安排项目</span></div>
         <div class="stat-cell"><span class="stat-value">${fmtMoney(Math.round(plan.budget / (plan.people || 2)))}</span><span class="stat-name">人均预算</span></div>
-        <div class="stat-cell"><span class="stat-value">${fmtMoney(Math.round(plan.summary.totalCost / (plan.people || 2)))}</span><span class="stat-name">人均已安排</span></div>
       </div>
-      <p class="breakdown-title">住宿推荐</p>
-      <div class="lodging-card">
-        <div class="lodging-head">
-          <span class="lodging-icon">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9v11M2 14h20v6M2 20h20M22 14V9a3 3 0 0 0-3-3H8v8"/><circle cx="6" cy="12" r="1"/></svg>
-          </span>
-          <div class="lodging-title">
-            <strong>${lodgingDisplayName(stayInfo)}</strong>
-            <span>${stayInfo.type} · ${stayInfo.area}</span>
-          </div>
+      <p class="breakdown-title">往返城际交通</p>
+      <div class="framework-block">
+        <div class="fw-row">
+          <strong>抵达</strong>
+          <span>${transport.arrive || '建议上午或下午抵达，留出半天熟悉城市'}</span>
         </div>
-        <p class="lodging-desc">${stayInfo.desc}</p>
-        <div class="lodging-meta">
-          <span class="lodging-price">参考价 ${fmtMoney(stayInfo.price)}/晚</span>
-          <button class="btn btn-secondary btn-sm" id="switchLodgingBtn" type="button">换一家</button>
+        <div class="fw-row">
+          <strong>返程</strong>
+          <span>${transport.depart || '建议返程当天上午出发，预留交通时间'}</span>
         </div>
-        <div class="lodging-tags">${(stayInfo.tags || []).map(tag => `<span class="mini-tag">${tag}</span>`).join('')}</div>
       </div>
-      <p class="breakdown-title">花费构成</p>
-      <div class="breakdown-list">
-        ${rows.map(([label, amount, color]) => `
-          <div class="breakdown-item">
-            <span class="breakdown-dot" style="background:${color}"></span>
-            <span>${label}</span>
-            <span>${fmtMoney(amount)}</span>
+      <p class="breakdown-title">住宿片区推荐</p>
+      <div class="framework-block">
+        ${lodgingAreas.map(area => `
+          <div class="fw-lodging">
+            <strong>${area.name || '市中心片区'}</strong>
+            <span class="fw-price">${area.priceRange || '以预订平台为准'}</span>
+            <p>${area.pros || ''}${area.cons ? `<span class="fw-cons">不足：${area.cons}</span>` : ''}</p>
+            <span class="fw-example">示例：${area.hotelExamples || '平台搜索'}</span>
           </div>`).join('')}
       </div>
-      <p class="summary-tip">${tipFor(plan)}</p>
-      ${travelTipsHTML(plan)}`;
+      <p class="breakdown-title">本地美食 & 特产</p>
+      <div class="framework-block">
+        ${foodList.map(item => `
+          <div class="fw-food">
+            <strong>${item.name || ''}</strong>
+            <span>${item.type || ''}</span>
+            <p>${item.note || ''}</p>
+          </div>`).join('')}
+      </div>
+      <p class="disclaimer">交通班次、酒店价格仅为规划参考，实际以购票、预订平台为准。</p>`;
   }
 
-  function tipFor(plan) {
+  function buildLocalFramework(plan) {
+    const city = cityFor(plan);
+    const foodPool = getPool(city, 'food');
+    const lodgingPool = (window.LUSHU_LODGING || {})[plan.destination] || [];
+    return {
+      transport: {
+        arrive: '建议上午或下午抵达，留出半天熟悉城市与办理入住',
+        depart: '建议返程当天上午出发，预留去车站/机场的时间'
+      },
+      lodgingAreas: lodgingPool.slice(0, 2).map(item => ({
+        name: item.area,
+        pros: item.desc,
+        cons: '节假日价格会明显上浮',
+        priceRange: `约 ${fmtMoney(item.price)}/晚`,
+        hotelExamples: item.name
+      })),
+      foodList: foodPool.slice(0, 6).map(item => ({
+        name: item.name,
+        type: '当地特色',
+        note: item.desc
+      }))
+    };
+  }
+function tipFor(plan) {
     if (plan.prefs.length === 1) {
       return `这次行程重点围绕「${plan.prefs[0]}」展开，其他时段留给了自由漫步，适合轻松出发。`;
     }
@@ -1195,6 +1201,7 @@
     const openStates = preserveOpen ? [...document.querySelectorAll('.day-card')].map(card => card.open) : null;
     const oldPlan = currentPlan;
     currentPlan = plan;
+    if (!plan.framework) plan.framework = buildLocalFramework(plan);
     if (!oldPlan || oldPlan.destination !== plan.destination || (oldPlan.dayCount || oldPlan.days.length) !== (plan.dayCount || plan.days.length)) {
       resetMap();
     }
@@ -1841,6 +1848,7 @@
 
   async function renderStreaming(plan) {
     currentPlan = plan;
+    if (!plan.framework) plan.framework = buildLocalFramework(plan);
     renderResultHead(plan);
     $('#resultSummary').innerHTML = '';
     $('#dayCards').innerHTML = '';

@@ -21,7 +21,7 @@ const SYSTEM_PROMPT = `你是一位专业的旅行行程规划师。根据用户
 2. 行程必须符合真实地理常识：同一天的景点应尽量在同区域或顺路，避免往返折返；给出每个景点的真实名称、所在区域、大致门票/消费（人民币）、建议游玩时长（分钟）和一句实用说明。
 3. 每天包含：上午、午餐、下午、晚餐、夜晚五个时段。每个时段可安排 1-3 个项目；上午/下午/夜晚优先安排景点或打卡点，午餐/晚餐安排真实餐厅或美食；不要留大段空白时间。
 4. 预算要落在用户预算区间内，住宿和交通费用单列。
-5. 遵守人群节奏：亲子/老年节奏放慢，徒步驴友可安排轻徒步，早起休闲早点开始，懒人慢游不要排太满。
+5. 结合用户核心偏好（美食/历史/自然/休闲，最多两项）分配重点：美食偏好多安排当地特色餐饮，历史偏好多安排古迹博物馆，自然偏好多安排山水公园，休闲偏好节奏放慢、少排队。
 
 JSON 结构：
 {
@@ -126,7 +126,28 @@ function normalizeAiPlan(raw, form) {
   };
 }
 
-async function generateWithDeepSeek(form) {
+const FRAMEWORK_PROMPT = `你是一位旅行规划专家。根据用户出行信息，输出顶层规划框架，只输出一个 JSON 对象，不要输出其他文字。
+
+JSON 结构：
+{
+  "transport": {
+    "arrive": "建议抵达城市的时段（上午/下午/傍晚/夜间）及一句理由",
+    "depart": "建议返程出发时段及一句理由"
+  },
+  "lodgingAreas": [
+    { "name": "片区名", "pros": "优点", "cons": "缺点", "priceRange": "参考价格区间", "hotelExamples": "1-2 家示例酒店名称" }
+  ],
+  "foodList": [
+    { "name": "美食或特产名", "type": "类别", "note": "一句话说明" }
+  ]
+}
+
+要求：
+1. 住宿片区推荐 1-2 个，给出参考价格区间和示例酒店名称。
+2. 美食特产清单 5-8 项。
+3. 只做顶层规划，不要输出任何每日景点安排。`;
+
+async function callDeepSeek(messages, maxTokens) {
   const apiKey = process.env.DEEPSEEK_API_KEY || '';
   if (!apiKey) {
     const err = new Error('DEEPSEEK_API_KEY 未配置');
@@ -136,10 +157,6 @@ async function generateWithDeepSeek(form) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90000);
   try {
-    let userContent = JSON.stringify(form);
-    if (form.parsedTags && form.parsedTags.length) {
-      userContent += `\n\n补充需求已解析为以下约束标签，生成行程时必须全部采纳：${form.parsedTags.join('、')}`;
-    }
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
@@ -149,12 +166,9 @@ async function generateWithDeepSeek(form) {
       body: JSON.stringify({
         model: 'deepseek-chat',
         response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userContent }
-        ],
+        messages,
         temperature: 0.7,
-        max_tokens: 6000
+        max_tokens: maxTokens
       }),
       signal: controller.signal
     });
@@ -169,8 +183,7 @@ async function generateWithDeepSeek(form) {
     const data = await response.json();
     const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
     if (!content) throw new Error('AI 返回内容为空');
-    const raw = JSON.parse(content);
-    return normalizeAiPlan(raw, form);
+    return JSON.parse(content);
   } catch (err) {
     if (err.name === 'AbortError') {
       const timeoutErr = new Error('AI 生成超时，请稍后重试');
@@ -183,4 +196,26 @@ async function generateWithDeepSeek(form) {
   }
 }
 
+async function generateWithDeepSeek(form) {
+  let userContent = JSON.stringify(form);
+  if (form.parsedTags && form.parsedTags.length) {
+    userContent += `\n\n补充需求已解析为以下约束标签，生成时请纳入考虑：${form.parsedTags.join('、')}`;
+  }
+
+  // 第一步：生成顶层规划框架
+  const framework = await callDeepSeek([
+    { role: 'system', content: FRAMEWORK_PROMPT },
+    { role: 'user', content: userContent }
+  ], 4000);
+
+  // 第二步：生成每日详细行程，框架作为硬性约束
+  const dailyContent = userContent + `\n\n以下是已确定的顶层规划框架，必须作为硬性约束严格执行：\n${JSON.stringify(framework)}\n\n硬性约束：\n1. 第一天的游玩项目时间不能早于推荐的抵达时段。\n2. 每日景点优先围绕推荐住宿片区就近排布，尽量减少远距离往返奔波。`;
+  const raw = await callDeepSeek([
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: dailyContent }
+  ], 6000);
+  const plan = normalizeAiPlan(raw, form);
+  plan.framework = framework;
+  return plan;
+}
 module.exports = { generateWithDeepSeek };
