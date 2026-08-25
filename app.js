@@ -1119,6 +1119,44 @@
       }
     };
   }
+  function arriveSlotIndex(timeText) {
+    const text = String(timeText || '');
+    if (/上午|早上|清晨|早晨/.test(text)) return 0;
+    if (/中午|下午/.test(text)) return 2;
+    if (/傍晚|黄昏/.test(text)) return 3;
+    return 4;
+  }
+
+  function applyFrameworkConstraints(plan) {
+    if (!plan || !plan.days || !plan.days.length) return plan;
+    const framework = plan.framework || buildLocalFramework(plan);
+    const transportPlans = (framework.transport && framework.transport.plans) || [];
+    const primary = transportPlans.find(p => !p.isBackup) || transportPlans[0];
+    const order = { morning: 0, lunch: 1, afternoon: 2, dinner: 3, evening: 4 };
+
+    if (primary && primary.arriveTime && plan.days[0]) {
+      const minIndex = arriveSlotIndex(primary.arriveTime);
+      const firstDay = plan.days[0];
+      if (firstDay && firstDay.items) {
+        const kept = firstDay.items.filter(item => (order[item.slotKey] !== undefined ? order[item.slotKey] : 0) >= minIndex);
+        firstDay.items = kept.length ? kept : firstDay.items.slice(-1);
+      }
+    }
+    plan.days.forEach(day => {
+      let transitMinutes = 0;
+      let totalDistanceKm = 0;
+      const city = cityFor(plan);
+      for (let i = 1; i < day.items.length; i++) {
+        transitMinutes += transferMinutes(city, day.items[i - 1].area, day.items[i].area);
+        totalDistanceKm += geoDistance(areaCoord(city, day.items[i - 1].area), areaCoord(city, day.items[i].area));
+      }
+      day.transitMinutes = Math.round(transitMinutes);
+      day.totalDistanceKm = Math.round(totalDistanceKm * 10) / 10;
+      refreshDayCost(day);
+    });
+    recomputePlanSummary(plan);
+    return plan;
+  }
 function tipFor(plan) {
     if (plan.prefs.length === 1) {
       return `这次行程重点围绕「${plan.prefs[0]}」展开，其他时段留给了自由漫步，适合轻松出发。`;
@@ -1194,8 +1232,23 @@ function tipFor(plan) {
       cat: 'transport',
       fixed: true
     };
+    const isLastDay = index === plan.days.length - 1;
+    const framework = plan.framework || buildLocalFramework(plan);
+    const primaryTransport = (framework.transport && framework.transport.plans || []).find(p => !p.isBackup) || (framework.transport && framework.transport.plans || [])[0];
+    const departTime = (primaryTransport && primaryTransport.departTime) || '上午';
     const stayInfo = lodgingForPlan(plan);
-    const stayItem = {
+    const stayItem = isLastDay ? {
+      name: '返程预留',
+      area: '返程',
+      cost: 0,
+      duration: 0,
+      desc: `建议按优先方案在${departTime}出发返程，预留充足时间前往车站/机场。`,
+      tags: ['返程', '预留'],
+      slotLabel: '返程',
+      time: departTime,
+      cat: 'transport',
+      fixed: true
+    } : {
       name: lodgingDisplayName(stayInfo),
       area: stayInfo.area,
       cost: day.lodging,
@@ -1280,6 +1333,7 @@ function tipFor(plan) {
     const oldPlan = currentPlan;
     currentPlan = plan;
     if (!plan.framework) plan.framework = buildLocalFramework(plan);
+    applyFrameworkConstraints(plan);
     if (!oldPlan || oldPlan.destination !== plan.destination || (oldPlan.dayCount || oldPlan.days.length) !== (plan.dayCount || plan.days.length)) {
       resetMap();
     }
@@ -1930,6 +1984,7 @@ function tipFor(plan) {
   async function renderStreaming(plan) {
     currentPlan = plan;
     if (!plan.framework) plan.framework = buildLocalFramework(plan);
+    applyFrameworkConstraints(plan);
     renderResultHead(plan);
     renderTopPlanning(plan);
     $('#resultSummary').innerHTML = '';
