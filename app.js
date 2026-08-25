@@ -2318,6 +2318,7 @@
       return;
     }
     hideFormError();
+    renderAcceptedTags();
     isGenerating = true;
     stopRequested = false;
     setGenerateLoading(true);
@@ -2458,19 +2459,27 @@
     { pattern: /寺庙|博物馆|历史|古迹/, label: '人文历史' }
   ];
 
-  function parseNoteTags() {
+  function collectNoteTags() {
     const text = $('#notes').value;
-    const container = $('#parsedTags');
-    if (!container) return;
-    if (!text.trim()) {
-      container.innerHTML = '';
-      return;
-    }
+    if (!text.trim()) return [];
     const labels = [];
     NOTE_KEYWORDS.forEach(rule => {
       if (rule.pattern.test(text) && !labels.includes(rule.label)) labels.push(rule.label);
     });
-    container.innerHTML = labels.map(label => `<span class="parsed-tag">${label}</span>`).join('');
+    return labels;
+  }
+
+  function renderAcceptedTags() {
+    const container = $('#parsedTags');
+    if (!container) return;
+    const labels = collectNoteTags();
+    if (!labels.length) {
+      container.innerHTML = '';
+      container.classList.remove('is-accepted');
+      return;
+    }
+    container.classList.add('is-accepted');
+    container.innerHTML = labels.map(label => `<span class="parsed-tag">已采纳 · ${label}</span>`).join('');
   }
 
   let authMode = 'login';
@@ -2752,10 +2761,7 @@
       saveFormState();
     });
     $('#people').addEventListener('input', saveFormState);
-    $('#notes').addEventListener('input', () => {
-      parseNoteTags();
-      saveFormState();
-    });
+    $('#notes').addEventListener('input', saveFormState);
     $('#destination').addEventListener('input', saveFormState);
     document.querySelectorAll('input[name="pref"]').forEach(input => {
       input.addEventListener('change', () => {

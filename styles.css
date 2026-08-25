@@ -2697,6 +2697,17 @@ button {
   font-weight: 700;
 }
 
+.parsed-tags.is-accepted {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(15, 107, 91, 0.35);
+}
+
+.parsed-tags.is-accepted .parsed-tag {
+  background: var(--green);
+  color: #fff;
+}
+
 /* 景点间交通建议 */
 .transfer-note {
   color: var(--green-deep);
@@ -2714,13 +2725,17 @@ button {
 
 .hero-step {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   padding: 14px 16px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(6px);
+}
+
+.hero-step div {
+  min-width: 0;
 }
 
 .hero-step-num {
@@ -2745,6 +2760,7 @@ button {
 .hero-step span {
   display: block;
   margin-top: 2px;
+  min-height: 36px;
   font-size: 12px;
   opacity: 0.85;
 }
