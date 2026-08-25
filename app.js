@@ -965,12 +965,77 @@
       </div>`;
   }
 
-    function summaryHTML(plan) {
-    const usedPct = Math.min(100, Math.max(4, Math.round(plan.summary.totalCost / plan.budget * 100)));
+      function renderTopPlanning(plan) {
+    const container = $('#topPlanning');
+    if (!container) return;
     const framework = plan.framework || buildLocalFramework(plan);
-    const transport = framework.transport || {};
+    const transportPlans = (framework.transport && framework.transport.plans) || [];
     const lodgingAreas = framework.lodgingAreas || [];
     const foodList = framework.foodList || [];
+    container.innerHTML = `
+      <div class="tp-section tp-transport">
+        <div class="tp-head">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a4 4 0 0 1 4 4v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M4 11h16M8 17v2M16 17v2"/></svg>
+          <strong>往返城际交通</strong>
+        </div>
+        <div class="tp-body">
+          ${transportPlans.map(p => `
+            <div class="tp-transport-item">
+              <div class="tp-item-head">
+                <span class="tp-mode">${p.mode || '高铁'}</span>
+                ${p.isBackup ? '<span class="tp-badge is-backup">备选</span>' : '<span class="tp-badge">优先</span>'}
+              </div>
+              <div class="tp-meta">
+                <span>抵达 ${p.arriveTime || '下午'}</span>
+                <span>返程 ${p.departTime || '上午'}</span>
+                <span>单程约 ${p.duration || '3-4 小时'}</span>
+                <span>参考价 ${p.priceRange || '以平台为准'}</span>
+              </div>
+              <p>${p.reason || ''}</p>
+            </div>`).join('')}
+        </div>
+        <p class="tp-disclaimer">班次、票价仅规划参考，请以官方购票平台实时信息为准。</p>
+      </div>
+      <div class="tp-section tp-lodging">
+        <div class="tp-head">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9v11M2 14h20v6M2 20h20M22 14V9a3 3 0 0 0-3-3H8v8"/><circle cx="6" cy="12" r="1"/></svg>
+          <strong>住宿片区推荐</strong>
+        </div>
+        <div class="tp-body">
+          ${lodgingAreas.map(a => `
+            <div class="tp-lodging-item">
+              <div class="tp-item-head">
+                <strong>${a.name || '市中心'}</strong>
+                <span>${a.priceRange || '以平台为准'}</span>
+              </div>
+              <p>${a.pros || ''}</p>
+              ${a.cons ? `<p class="tp-cons">不足：${a.cons}</p>` : ''}
+              <span class="tp-example">示例：${a.hotelExamples || '平台搜索'}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="tp-section tp-food">
+        <div class="tp-head">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11h16M8 4v4M16 4v4M6 11v8a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-8M14 11v8a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-8"/></svg>
+          <strong>本地美食推荐</strong>
+        </div>
+        <div class="tp-body">
+          ${foodList.map(f => `
+            <div class="tp-food-item">
+              <div class="tp-item-head">
+                <strong>${f.name || ''}</strong>
+                <span>${f.area || ''}</span>
+              </div>
+              <p>${f.note || ''}</p>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  function summaryHTML(plan) {
+    const usedPct = Math.min(100, Math.max(4, Math.round(plan.summary.totalCost / plan.budget * 100)));
+    const framework = plan.framework || buildLocalFramework(plan);
+    const guide = framework.guide || {};
     return `
       <p class="summary-label">预算使用</p>
       <div class="budget-block">
@@ -985,60 +1050,72 @@
         <div class="stat-cell"><span class="stat-value">${plan.summary.itemsCount}</span><span class="stat-name">安排项目</span></div>
         <div class="stat-cell"><span class="stat-value">${fmtMoney(Math.round(plan.budget / (plan.people || 2)))}</span><span class="stat-name">人均预算</span></div>
       </div>
-      <p class="breakdown-title">往返城际交通</p>
-      <div class="framework-block">
-        <div class="fw-row">
-          <strong>抵达</strong>
-          <span>${transport.arrive || '建议上午或下午抵达，留出半天熟悉城市'}</span>
-        </div>
-        <div class="fw-row">
-          <strong>返程</strong>
-          <span>${transport.depart || '建议返程当天上午出发，预留交通时间'}</span>
-        </div>
+      <p class="breakdown-title">天气与穿衣</p>
+      <div class="guide-block">
+        <div class="guide-row"><strong>天气预判</strong><span>${guide.weather || '出发前查询当地天气，按季节备衣'}</span></div>
+        <div class="guide-row"><strong>穿衣建议</strong><span>${guide.clothing || '舒适轻便为主，备一件外套应对温差'}</span></div>
       </div>
-      <p class="breakdown-title">住宿片区推荐</p>
-      <div class="framework-block">
-        ${lodgingAreas.map(area => `
-          <div class="fw-lodging">
-            <strong>${area.name || '市中心片区'}</strong>
-            <span class="fw-price">${area.priceRange || '以预订平台为准'}</span>
-            <p>${area.pros || ''}${area.cons ? `<span class="fw-cons">不足：${area.cons}</span>` : ''}</p>
-            <span class="fw-example">示例：${area.hotelExamples || '平台搜索'}</span>
-          </div>`).join('')}
+      <p class="breakdown-title">游玩注意事项</p>
+      <div class="guide-list">
+        ${(guide.notes || []).map(note => `<div class="guide-item">${note}</div>`).join('') || '<div class="guide-item">提前预约热门景点，错峰出行</div>'}
       </div>
-      <p class="breakdown-title">本地美食 & 特产</p>
-      <div class="framework-block">
-        ${foodList.map(item => `
-          <div class="fw-food">
-            <strong>${item.name || ''}</strong>
-            <span>${item.type || ''}</span>
-            <p>${item.note || ''}</p>
-          </div>`).join('')}
+      <p class="breakdown-title">避坑提示</p>
+      <div class="guide-list">
+        ${(guide.pitfalls || []).map(pit => `<div class="guide-item">${pit}</div>`).join('') || '<div class="guide-item">谨慎选择低价一日游，谨防购物陷阱</div>'}
       </div>
-      <p class="disclaimer">交通班次、酒店价格仅为规划参考，实际以购票、预订平台为准。</p>`;
+      <p class="breakdown-title">出行小贴士</p>
+      <div class="guide-list">
+        ${(guide.tips || []).map(tip => `<div class="guide-item">${tip}</div>`).join('') || '<div class="guide-item">下载离线地图，随身携带充电宝</div>'}
+      </div>`;
   }
 
   function buildLocalFramework(plan) {
     const city = cityFor(plan);
     const foodPool = getPool(city, 'food');
     const lodgingPool = (window.LUSHU_LODGING || {})[plan.destination] || [];
+    const departCity = (lastForm && lastForm.departCity) || '出发城市';
     return {
       transport: {
-        arrive: '建议上午或下午抵达，留出半天熟悉城市与办理入住',
-        depart: '建议返程当天上午出发，预留去车站/机场的时间'
+        plans: [
+          {
+            mode: '高铁',
+            arriveTime: '下午',
+            departTime: '返程当天上午',
+            duration: '3-5 小时',
+            priceRange: '¥300 - ¥600',
+            reason: `从${departCity}出发乘高铁抵达，下午到站办理入住后正好衔接第一天的傍晚行程；返程安排在上午，预留充足时间去车站。`,
+            isBackup: false
+          },
+          {
+            mode: '飞机',
+            arriveTime: '上午',
+            departTime: '返程当天下午',
+            duration: '2-3 小时（含机场往返）',
+            priceRange: '¥400 - ¥800',
+            reason: `若${departCity}直飞航班充足，上午抵达可在第一天安排更多游玩时间；返程下午起飞，上午还能收尾打卡。`,
+            isBackup: true
+          }
+        ]
       },
-      lodgingAreas: lodgingPool.slice(0, 2).map(item => ({
+      lodgingAreas: lodgingPool.slice(0, 4).map(item => ({
         name: item.area,
+        priceRange: `约 ${fmtMoney(item.price)}/晚`,
         pros: item.desc,
         cons: '节假日价格会明显上浮',
-        priceRange: `约 ${fmtMoney(item.price)}/晚`,
         hotelExamples: item.name
       })),
       foodList: foodPool.slice(0, 6).map(item => ({
         name: item.name,
-        type: '当地特色',
+        area: item.area,
         note: item.desc
-      }))
+      })),
+      guide: {
+        weather: '出发前查询当地 7 天天气，按季节备衣',
+        clothing: '舒适轻便为主，早晚备一件薄外套',
+        notes: ['热门景点建议提前 3-7 天预约', '周一博物馆闭馆，出发前确认开放时间'],
+        pitfalls: ['谨慎选择路边揽客的一日游', '景区门口购物先比价'],
+        tips: ['下载离线地图，随身携带充电宝', '市内出行优先地铁，高峰期预留时间']
+      }
     };
   }
 function tipFor(plan) {
@@ -1206,6 +1283,7 @@ function tipFor(plan) {
       resetMap();
     }
     renderResultHead(plan);
+    renderTopPlanning(plan);
     $('#resultSummary').innerHTML = summaryHTML(plan);
     $('#dayCards').innerHTML = plan.days.map((day, index) => dayCardHTML(plan, day, index)).join('');
     $('#skeletonWrap').hidden = true;
@@ -1253,9 +1331,10 @@ function tipFor(plan) {
     const max = Math.max(budgetMin, budgetMax);
     const fromDates = calcDays($('#startDate').value, $('#endDate').value);
     const days = fromDates || clamp(parseInt($('#days').value, 10) || 1, 1, 14);
-    return {
-      destination: $('#destination').value.trim(),
-      startDate: $('#startDate').value,
+      return {
+        destination: $('#destination').value.trim(),
+        departCity: $('#departCity').value.trim(),
+        startDate: $('#startDate').value,
       endDate: $('#endDate').value,
       people: clamp(parseInt($('#people').value, 10) || 2, 1, 20),
       days,
@@ -1271,6 +1350,7 @@ function tipFor(plan) {
   function applyForm(form) {
     if (!form) return;
     $('#destination').value = form.destination || '';
+    $('#departCity').value = form.departCity || '';
     $('#startDate').value = form.startDate || '';
     $('#endDate').value = form.endDate || '';
     $('#people').value = form.people || 2;
@@ -1278,7 +1358,7 @@ function tipFor(plan) {
     $('#budgetMin').value = form.budgetMin || 3000;
     $('#budgetMax').value = form.budgetMax || 6000;
     $('#notes').value = form.notes || '';
-    setPrefs(form.prefs && form.prefs.length ? form.prefs : ['美食', '打卡', '休闲']);
+    setPrefs(form.prefs && form.prefs.length ? form.prefs : ['美食', '休闲']);
     const crowdInput = document.querySelector(`input[name="crowd"][value="${form.crowd || '情侣'}"]`);
     if (crowdInput) crowdInput.checked = true;
     const paceInput = document.querySelector(`input[name="pace"][value="${form.pace || '深度打卡'}"]`);
@@ -1850,6 +1930,7 @@ function tipFor(plan) {
     currentPlan = plan;
     if (!plan.framework) plan.framework = buildLocalFramework(plan);
     renderResultHead(plan);
+    renderTopPlanning(plan);
     $('#resultSummary').innerHTML = '';
     $('#dayCards').innerHTML = '';
     $('#skeletonWrap').hidden = false;
