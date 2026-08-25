@@ -2716,9 +2716,10 @@ button {
 
 /* 首屏三步融合 */
 .hero-steps {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 24px;
   margin-top: 26px;
   max-width: 720px;
 }
@@ -2726,7 +2727,10 @@ button {
 .hero-step {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 12px;
+  flex: 1 1 0;
+  min-width: 0;
   padding: 14px 16px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 12px;
@@ -2735,7 +2739,11 @@ button {
 }
 
 .hero-step div {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
+  flex: 1;
 }
 
 .hero-step-num {
@@ -2744,6 +2752,7 @@ button {
   width: 26px;
   height: 26px;
   flex-shrink: 0;
+  align-self: center;
   border-radius: 50%;
   background: var(--coral);
   color: #fff;
@@ -2767,6 +2776,12 @@ button {
 
 @media (max-width: 720px) {
   .hero-steps {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-step {
+    flex: 1 1 auto;
+    width: 100%;
   }
 }
