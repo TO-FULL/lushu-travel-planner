@@ -2401,6 +2401,10 @@ function tipFor(plan) {
 
   function handleGenerate() {
     if (isGenerating) return;
+    const searchInput = $('#planSearch');
+    if (searchInput) searchInput.value = '';
+    const searchPanel = $('#searchResults');
+    if (searchPanel) searchPanel.hidden = true;
     const form = readForm();
     const error = validateForm(form);
     if (error) {
