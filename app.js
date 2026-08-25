@@ -982,7 +982,7 @@
           ${transportPlans.map(p => `
             <div class="tp-transport-item">
               <div class="tp-item-head">
-                <span class="tp-mode">${p.mode || '高铁'}</span>
+                <strong class="tp-transport-mode">${p.mode || '高铁'}</strong>
                 ${p.isBackup ? '<span class="tp-badge is-backup">备选</span>' : '<span class="tp-badge">优先</span>'}
               </div>
               <div class="tp-meta">
@@ -1013,6 +1013,7 @@
               <span class="tp-example">示例：${a.hotelExamples || '平台搜索'}</span>
             </div>`).join('')}
         </div>
+        <p class="tp-disclaimer">酒店价格仅为规划参考，实际预订价格请以酒店平台实时信息为准。</p>
       </div>
       <div class="tp-section tp-food">
         <div class="tp-head">
@@ -2408,9 +2409,6 @@ function tipFor(plan) {
     }
     hideFormError();
     lastForm = form;
-    form.parsedTags = collectNoteTags();
-    renderAcceptedTags();
-    if (form.parsedTags.length) showToast('需求已被识别');
     isGenerating = true;
     stopRequested = false;
     setGenerateLoading(true);
@@ -2537,41 +2535,6 @@ function tipFor(plan) {
     toastTimer = setTimeout(() => {
       toast.hidden = true;
     }, 2400);
-  }
-
-  const NOTE_KEYWORDS = [
-    { pattern: /老人|长辈|父母/, label: '家庭友好' },
-    { pattern: /小孩|儿童|亲子|带娃/, label: '家庭友好' },
-    { pattern: /爬山|徒步|登山/, label: '户外徒步' },
-    { pattern: /夜景|灯光|夜游/, label: '夜景打卡' },
-    { pattern: /拍照|摄影|出片/, label: '摄影出片' },
-    { pattern: /不辣|吃辣|辣/, label: '口味偏好' },
-    { pattern: /网红|人多|排队/, label: '错峰出行' },
-    { pattern: /慢|放松|悠闲/, label: '慢节奏' },
-    { pattern: /寺庙|博物馆|历史|古迹/, label: '人文历史' }
-  ];
-
-  function collectNoteTags() {
-    const text = $('#notes').value;
-    if (!text.trim()) return [];
-    const labels = [];
-    NOTE_KEYWORDS.forEach(rule => {
-      if (rule.pattern.test(text) && !labels.includes(rule.label)) labels.push(rule.label);
-    });
-    return labels;
-  }
-
-  function renderAcceptedTags() {
-    const container = $('#parsedTags');
-    if (!container) return;
-    const labels = collectNoteTags();
-    if (!labels.length) {
-      container.innerHTML = '';
-      container.classList.remove('is-accepted');
-      return;
-    }
-    container.classList.add('is-accepted');
-    container.innerHTML = labels.map(label => `<span class="parsed-tag">已采纳 · ${label}</span>`).join('');
   }
 
   let authMode = 'login';

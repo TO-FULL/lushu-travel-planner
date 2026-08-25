@@ -2677,37 +2677,6 @@ button {
   }
 }
 
-/* 补充需求解析标签 */
-.parsed-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-height: 22px;
-  margin-top: 8px;
-}
-
-.parsed-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: rgba(15, 107, 91, 0.1);
-  color: var(--green-deep);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.parsed-tags.is-accepted {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed rgba(15, 107, 91, 0.35);
-}
-
-.parsed-tags.is-accepted .parsed-tag {
-  background: var(--green);
-  color: #fff;
-}
-
 /* 景点间交通建议 */
 .transfer-note {
   color: var(--green-deep);
@@ -2944,18 +2913,6 @@ button {
   gap: 8px;
 }
 
-.tp-mode {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: var(--green);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 800;
-}
-
 .tp-badge {
   font-size: 11px;
   font-weight: 800;
@@ -3000,6 +2957,12 @@ button {
 .tp-item-head strong {
   font-size: 13px;
   font-weight: 800;
+}
+
+.tp-transport-mode {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
 }
 
 .tp-item-head > span {
