@@ -2720,6 +2720,7 @@ button {
   justify-content: space-between;
   align-items: stretch;
   gap: 24px;
+  width: 100%;
   margin-top: 26px;
   max-width: 720px;
 }
@@ -2727,7 +2728,6 @@ button {
 .hero-step {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
   gap: 12px;
   flex: 1 1 0;
   min-width: 0;
