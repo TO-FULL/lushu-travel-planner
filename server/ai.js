@@ -227,7 +227,7 @@ async function generateWithDeepSeek(form) {
   ], 4000);
 
   // 第二步：生成每日详细行程，框架作为硬性约束
-  const dailyContent = userContent + `\n\n以下是已确定的顶层规划框架，必须作为硬性约束严格执行：\n${JSON.stringify(framework)}\n\n硬性约束：\n1. 第一天的游玩项目时间不能早于推荐的抵达时段。\n2. 每日景点优先围绕推荐住宿片区就近排布，尽量减少远距离往返奔波。`;
+  const dailyContent = userContent + `\n\n以下是已确定的顶层规划框架，必须作为硬性约束严格执行：\n${JSON.stringify(framework)}\n\n硬性约束：\n1. 交通基准：只采用 transport.plans 中 isBackup=false 的优先方案。第一天行程强度必须匹配该方案的 arriveTime（如下午抵达则第一天只安排傍晚/夜间活动，不安排上午项目）；最后一天根据 departTime 预留充足返程缓冲时间，不安排卡点游玩项目。备选交通方案仅用于页面展示，不参与行程计算。\n2. 区位基准：以 lodgingAreas 数组中第一条作为游玩中心点，每日景点和就餐点位就近围绕该片区排布，减少远距离往返奔波。\n3. 美食约束：每日午餐/晚餐优先采用 foodList 中的美食，并优先选择靠近中心住宿片区的就餐街区。\n4. 基础约束：严格控制在表单预算上下限内，结合出行偏好（prefs）与补充需求（notes）控制行程节奏。`;
   const raw = await callDeepSeek([
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: dailyContent }
