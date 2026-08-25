@@ -2726,28 +2726,19 @@ button {
 }
 
 .hero-step {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
   flex: 1 1 0;
   min-width: 0;
-  padding: 14px 16px;
+  padding: 0 16px !important;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(6px);
 }
 
-.hero-step div {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  min-width: 0;
-  flex: 1;
-}
-
-.hero-step-num {
+.step-circle {
   display: grid;
   place-items: center;
   width: 26px;
@@ -2761,15 +2752,23 @@ button {
   line-height: 1;
 }
 
-.hero-step strong {
-  display: block;
+.step-text-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.step-text-wrap h4 {
+  margin: 0;
   font-size: 14px;
   font-weight: 800;
   line-height: 1.3;
 }
 
-.hero-step span {
-  display: block;
+.step-text-wrap p {
+  margin: 0;
   font-size: 12px;
   line-height: 1.5;
   opacity: 0.85;
