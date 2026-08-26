@@ -453,6 +453,27 @@
     return stayInfo && stayInfo.area ? `${stayInfo.area}附近` : '住宿附近';
   }
 
+  function midPriceFromRange(text) {
+    const nums = String(text || '').match(/\d+(?:\.\d+)?/g);
+    if (!nums || !nums.length) return 480;
+    const values = nums.map(Number);
+    return Math.round((Math.min(...values) + Math.max(...values)) / 2);
+  }
+
+  function lodgingAreaToStayInfo(area) {
+    const name = (area && area.name) || '市中心';
+    const price = area ? midPriceFromRange(area.priceRange) : 480;
+    const tag = (area && area.tag) || '核心区';
+    return {
+      name: (area && area.hotelExamples) || `${name}商务酒店`,
+      area: name,
+      type: '酒店',
+      price,
+      desc: (area && area.pros) || `${name}周边住宿，出行便利。`,
+      tags: [tag, '首推']
+    };
+  }
+
   function orderAreasByDistance(city, startArea) {
     const areas = city.areas && city.areas.length
       ? city.areas.map(item => typeof item === 'object' ? item.name : item)
@@ -825,9 +846,9 @@
 
       const rooms = crowd === '亲子' ? 2 : Math.max(1, Math.ceil(people / 2));
       const budgetLodging = Math.max(120, Math.min(Math.round(target * 0.45 / 10) * 10, Math.round(target * 0.3 * Math.min(rooms, 2) / 10) * 10));
-      const lodging = options.lodging
+      const lodging = isLastDay ? 0 : (options.lodging
         ? Math.max(120, Math.min(Math.round(options.lodging.price / 10) * 10, Math.round(target * 0.5 / 10) * 10))
-        : budgetLodging;
+        : budgetLodging);
     const baseTransport = Math.min(target * 0.18, Math.max(40, Math.round(target * 0.08 * Math.min(rooms, 1.6) / 10) * 10));
     const transport = crowd === '老年' ? Math.round(baseTransport * 1.4 / 10) * 10 : baseTransport;
     const activitiesBudget = Math.max(100, target - lodging - transport);
@@ -926,6 +947,11 @@
     };
     plan.context = contextHistory.slice();
     ensureGlobalContext(plan);
+    if (!fixedLodging) {
+      const localFramework = buildLocalFramework(plan);
+      const firstLodgingArea = localFramework.lodgingAreas && localFramework.lodgingAreas.areas && localFramework.lodgingAreas.areas[0];
+      if (firstLodgingArea) plan.lodging = lodgingAreaToStayInfo(firstLodgingArea);
+    }
     return dedupePlan(plan);
   }
 
@@ -1008,12 +1034,13 @@
           <strong>住宿片区推荐</strong>
         </div>
         <div class="tp-body">
-          ${lodgingAreas.map(a => `
+          ${lodgingAreas.map((a, areaIndex) => `
             <div class="tp-lodging-item">
               <div class="tp-item-head">
                 <strong>${a.name || '市中心'}</strong>
                 <span>${a.priceRange || '以平台为准'}</span>
               </div>
+              ${areaIndex === 0 ? '<span class="tp-tag">本次行程锁定</span>' : ''}
               ${a.tag ? `<span class="tp-tag">${a.tag}</span>` : ''}
               <p>${a.pros || ''}</p>
               ${a.cons ? `<p class="tp-cons">不足：${a.cons}</p>` : ''}
@@ -1500,7 +1527,7 @@ function tipFor(plan) {
           </div>
           <div class="day-card-cost">
             <strong>${fmtMoney(day.cost)}</strong>
-            <span>含住宿与交通</span>
+            <span>${day.lodging > 0 ? '含住宿与交通' : '含交通，无住宿'}</span>
           </div>
           <span class="day-card-chevron" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
@@ -1776,12 +1803,12 @@ function tipFor(plan) {
       ''
     ].filter(Boolean);
     plan.days.forEach(day => {
-      lines.push(`第 ${day.day} 天 · ${day.theme}（${day.area}）约 ${fmtMoney(day.cost)}，其中住宿预留 ${fmtMoney(day.lodging)}、交通预留 ${fmtMoney(day.transport)}`);
+      lines.push(`第 ${day.day} 天 · ${day.theme}（${day.area}）约 ${fmtMoney(day.cost)}${day.lodging > 0 ? `，其中住宿预留 ${fmtMoney(day.lodging)}、交通预留 ${fmtMoney(day.transport)}` : `，其中交通预留 ${fmtMoney(day.transport)}`}`);
       lines.push(`  全天 按需 市内交通预留 - ${day.transport ? fmtMoney(day.transport) : '免费'}（交通）`);
       day.items.forEach(item => {
         lines.push(`  ${item.slotLabel} ${item.time} ${item.name} - ${item.cost ? fmtMoney(item.cost) : '免费'}（${itemTypeLabel(item.cat)}）`);
       });
-      lines.push(`  夜晚 22:00 后 住宿预留 - ${fmtMoney(day.lodging)}（住宿）`);
+      if (day.lodging > 0) lines.push(`  夜晚 22:00 后 住宿预留 - ${fmtMoney(day.lodging)}（住宿）`);
       lines.push('');
     });
     lines.push(`合计已安排：${fmtMoney(plan.summary.totalCost)} / 预算 ${fmtMoney(plan.budget)}`);
@@ -2248,14 +2275,14 @@ function tipFor(plan) {
     const day = currentPlan.days[dayIndex];
     const lines = [
       `第 ${day.day} 天 · ${day.theme}（${day.area}）`,
-      `当日约 ${fmtMoney(day.cost)}，含住宿 ${fmtMoney(day.lodging)}、交通 ${fmtMoney(day.transport)}`,
+      `当日约 ${fmtMoney(day.cost)}${day.lodging > 0 ? `，含住宿 ${fmtMoney(day.lodging)}、交通 ${fmtMoney(day.transport)}` : `，含交通 ${fmtMoney(day.transport)}`}`,
       ''
     ];
     lines.push(`  全天 按需 市内交通预留 - ${day.transport ? fmtMoney(day.transport) : '免费'}`);
     day.items.forEach(item => {
       lines.push(`  ${item.slotLabel} ${item.time} ${item.name} - ${item.cost ? fmtMoney(item.cost) : '免费'}（${itemTypeLabel(item.cat)}）`);
     });
-    lines.push(`  夜晚 22:00 后 住宿预留 - ${fmtMoney(day.lodging)}`);
+    if (day.lodging > 0) lines.push(`  夜晚 22:00 后 住宿预留 - ${fmtMoney(day.lodging)}`);
     copyText(lines.join('\n'), '已复制单日行程');
   }
 
@@ -2536,7 +2563,9 @@ function tipFor(plan) {
     }
     plan.id = plan.id || 'plan-' + Date.now();
     plan.destination = plan.destination || form.destination;
+    const cloudDayCount = Array.isArray(plan.days) ? plan.days.length : 0;
     plan.days = plan.days.map((day, index) => {
+      const isLastCloudDay = index === cloudDayCount - 1;
       day.day = index + 1;
       day.items = (day.items || []).map(item => {
         const slotKey = SLOTS.some(slot => slot.key === item.slotKey) ? item.slotKey
@@ -2559,7 +2588,7 @@ function tipFor(plan) {
       });
       day.theme = day.theme || (index === 0 ? '初见城市' : '经典巡礼');
       day.area = day.area || '市中心';
-      day.lodging = Math.max(100, Math.round(Number(day.lodging) || 400));
+      day.lodging = isLastCloudDay ? 0 : Math.max(100, Math.round(Number(day.lodging) || 400));
       day.transport = Math.max(0, Math.round(Number(day.transport) || 100));
       day.baseTransport = day.transport;
       return day;
@@ -2581,6 +2610,10 @@ function tipFor(plan) {
     plan.lodging = plan.lodging || { area: '市中心', type: '酒店', price: 400, desc: '市中心住宿，出行方便。', tags: ['交通便利'] };
     plan.summary = plan.summary || {};
     ensureGlobalContext(plan);
+    const cloudFramework = plan.framework || {};
+    const cloudLodgingModule = cloudFramework.lodgingAreas || {};
+    const cloudAreas = Array.isArray(cloudLodgingModule) ? cloudLodgingModule : cloudLodgingModule.areas;
+    if (cloudAreas && cloudAreas[0]) plan.lodging = lodgingAreaToStayInfo(cloudAreas[0]);
     return dedupePlan(plan);
   }
 
