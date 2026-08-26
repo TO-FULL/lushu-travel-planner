@@ -923,6 +923,7 @@
       }
     };
     plan.context = contextHistory.slice();
+    ensureGlobalContext(plan);
     return dedupePlan(plan);
   }
 
@@ -1039,8 +1040,7 @@
 
   function summaryHTML(plan) {
     const usedPct = Math.min(100, Math.max(4, Math.round(plan.summary.totalCost / plan.budget * 100)));
-    const framework = plan.framework || buildLocalFramework(plan);
-    const guide = framework.guide || {};
+    const guide = resolveGuide(plan);
     return `
       <p class="summary-label">预算使用</p>
       <div class="budget-block">
@@ -1109,6 +1109,74 @@
     return capital ? capital + '市' : name;
   }
 
+  function monthFromDateStr(dateStr) {
+    if (!dateStr) return null;
+    const matched = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(dateStr).trim());
+    if (matched) return parseInt(matched[2], 10);
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.getMonth() + 1;
+  }
+
+  function ensureGlobalContext(plan) {
+    if (!plan) plan = {};
+    const ctx = plan.globalContext || {};
+    ctx.destination = plan.destination || ctx.destination || '';
+    ctx.startDate = plan.startDate || ctx.startDate || '';
+    ctx.endDate = plan.endDate || ctx.endDate || '';
+    ctx.month = monthFromDateStr(ctx.startDate) || null;
+    plan.globalContext = ctx;
+    return plan;
+  }
+
+  function buildSeasonalGuide(ctx) {
+    ctx = ctx || {};
+    const dest = String(ctx.destination || '当地');
+    const month = monthFromDateStr(ctx.startDate);
+    if (!month) {
+      return {
+        weather: '出行季节气候预判，请结合出行日期查询目的地实时天气。',
+        clothing: '建议以舒适轻便为主，备一件外套应对室内外温差，具体衣物请结合实时天气调整。'
+      };
+    }
+    if (month >= 3 && month <= 5) {
+      return {
+        weather: `${dest}当地${month}月处于春季，常年温和多雨，气温约 10-22℃，日照中等，出行建议备好雨伞与薄外套。`,
+        clothing: '建议携带薄外套、长袖单衣与雨伞，应对春季昼夜温差和阵雨。'
+      };
+    }
+    if (month >= 6 && month <= 8) {
+      return {
+        weather: `${dest}当地${month}月处于夏季，常年炎热多雨，气温约 26-35℃，午后多雷阵雨，日照强烈，注意防晒补水。`,
+        clothing: '建议携带防晒衣、遮阳帽、雨伞与防晒霜，衣物以透气速干为主。'
+      };
+    }
+    if (month >= 9 && month <= 11) {
+      return {
+        weather: `${dest}当地${month}月处于秋季，常年凉爽舒适、降水减少，气温约 15-27℃，昼夜温差明显，适合早晚加一件外套。`,
+        clothing: '建议携带轻薄外套与长裤，早晚添衣、午后减衣，防晒和雨具各备一件。'
+      };
+    }
+    return {
+      weather: `${dest}当地${month}月处于冬季，常年寒冷湿冷，气温约 2-10℃，阴雨偏多、日照偏少，注意保暖防滑。`,
+      clothing: '建议携带保暖外套、毛衣、围巾与防滑鞋，怕冷可加保暖内衣。'
+    };
+  }
+
+  function resolveGuide(plan) {
+    ensureGlobalContext(plan);
+    const framework = plan.framework || buildLocalFramework(plan);
+    const base = (framework && framework.guide) || {};
+    const seasonal = buildSeasonalGuide(plan.globalContext);
+    return {
+      weather: seasonal.weather,
+      clothing: seasonal.clothing,
+      notes: base.notes,
+      pitfalls: base.pitfalls,
+      tips: base.tips
+    };
+  }
+
   function buildLocalTransport(departCity, destCity) {
     const a = resolveFrontCityCoord(departCity);
     const b = resolveFrontCityCoord(destCity);
@@ -1133,6 +1201,7 @@
     return { plans: [primary, backup] };
   }
   function buildLocalFramework(plan) {
+    ensureGlobalContext(plan);
     const city = cityFor(plan);
     const foodPool = getPool(city, 'food');
     const lodgingPool = (window.LUSHU_LODGING || {})[plan.destination] || [];
@@ -1166,8 +1235,8 @@
         note: item.desc
       })),
       guide: {
-        weather: `${new Date().getMonth() + 1} 月当地以${new Date().getMonth() + 1 >= 3 && new Date().getMonth() + 1 <= 5 ? '温和湿润' : (new Date().getMonth() + 1 >= 6 && new Date().getMonth() + 1 <= 8 ? '炎热多雨' : (new Date().getMonth() + 1 >= 9 && new Date().getMonth() + 1 <= 11 ? '凉爽舒适' : '干冷'))}为主，早晚温差明显，出行前请确认实时天气`,
-        clothing: '建议携带一件薄外套应对早晚温差，夏季备防晒衣与雨具，冬季备保暖层与防滑鞋',
+        weather: buildSeasonalGuide(plan.globalContext).weather,
+        clothing: buildSeasonalGuide(plan.globalContext).clothing,
         notes: ['热门景点建议提前 3-7 天预约', '周一博物馆闭馆，出发前确认开放时间'],
         pitfalls: ['谨慎选择路边揽客的一日游', '景区门口购物先比价'],
         tips: ['下载离线地图，随身携带充电宝', '市内出行优先地铁，高峰期预留时间']
@@ -2414,6 +2483,7 @@ function tipFor(plan) {
     plan.endDate = plan.endDate || form.endDate;
     plan.lodging = plan.lodging || { area: '市中心', type: '酒店', price: 400, desc: '市中心住宿，出行方便。', tags: ['交通便利'] };
     plan.summary = plan.summary || {};
+    ensureGlobalContext(plan);
     return dedupePlan(plan);
   }
 
