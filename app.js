@@ -973,7 +973,6 @@
     const lodgingAreas = framework.lodgingAreas || [];
     const foodList = framework.foodList || [];
     container.innerHTML = `
-      <div class="constraint-note">本行程基于优先往返交通方案与首推住宿片区生成，抵达与返程时段已预留缓冲。</div>
       <div class="tp-section tp-transport">
         <div class="tp-head">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a4 4 0 0 1 4 4v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M4 11h16M8 17v2M16 17v2"/></svg>
