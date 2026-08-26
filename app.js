@@ -970,7 +970,9 @@
     if (!container) return;
     const framework = plan.framework || buildLocalFramework(plan);
     const transportPlans = (framework.transport && framework.transport.plans) || [];
-    const lodgingAreas = framework.lodgingAreas || [];
+    const lodgingAreas = (framework.lodgingAreas && framework.lodgingAreas.length)
+      ? framework.lodgingAreas
+      : buildLocalFramework(plan).lodgingAreas;
     const foodList = framework.foodList || [];
     container.innerHTML = `
       <div class="tp-section tp-transport">
@@ -1008,6 +1010,7 @@
                 <strong>${a.name || '市中心'}</strong>
                 <span>${a.priceRange || '以平台为准'}</span>
               </div>
+              ${a.tag ? `<span class="tp-tag">${a.tag}</span>` : ''}
               <p>${a.pros || ''}</p>
               ${a.cons ? `<p class="tp-cons">不足：${a.cons}</p>` : ''}
               <span class="tp-example">示例：${a.hotelExamples || '平台搜索'}</span>
@@ -1132,6 +1135,7 @@
       transport: buildLocalTransport(departCity, plan.destination),
       lodgingAreas: lodgingPool.slice(0, 4).map(item => ({
         name: item.area,
+        tag: /湖|江|海|河/.test(item.area) ? '滨水' : (/古|老|老街/.test(item.area) ? '老城区' : (/中心|广场|商圈/.test(item.area) ? '市中心' : '核心区')),
         priceRange: `约 ${fmtMoney(item.price)}/晚`,
         pros: item.desc,
         cons: '节假日价格会明显上浮',
