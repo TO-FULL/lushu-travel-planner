@@ -1070,34 +1070,66 @@
       </div>`;
   }
 
+  const FRONT_CITY_COORDS = {
+    '北京': [39.90, 116.41], '上海': [31.23, 121.47], '广州': [23.13, 113.26], '深圳': [22.54, 114.06],
+    '成都': [30.57, 104.07], '重庆': [29.56, 106.55], '杭州': [30.27, 120.16], '南京': [32.06, 118.80],
+    '苏州': [31.30, 120.59], '天津': [39.08, 117.20], '武汉': [30.59, 114.31], '西安': [34.34, 108.94],
+    '长沙': [28.23, 112.94], '郑州': [34.75, 113.63], '济南': [36.65, 117.12], '青岛': [36.07, 120.38],
+    '厦门': [24.48, 118.09], '福州': [26.07, 119.30], '昆明': [25.04, 102.71], '贵阳': [26.65, 106.63],
+    '南宁': [22.82, 108.32], '海口': [20.04, 110.32], '三亚': [18.25, 109.51], '哈尔滨': [45.80, 126.53],
+    '长春': [43.82, 125.32], '沈阳': [41.80, 123.43], '大连': [38.91, 121.61], '石家庄': [38.04, 114.51],
+    '太原': [37.87, 112.55], '呼和浩特': [40.84, 111.75], '兰州': [36.06, 103.83], '西宁': [36.62, 101.78],
+    '银川': [38.49, 106.23], '乌鲁木齐': [43.83, 87.62], '拉萨': [29.65, 91.14], '合肥': [31.82, 117.23],
+    '南昌': [28.68, 115.86], '桂林': [25.27, 110.29], '大理': [25.61, 100.27], '丽江': [26.87, 100.23],
+    '洛阳': [34.62, 112.45], '香港': [22.32, 114.17], '澳门': [22.20, 113.55], '台北': [25.03, 121.57]
+  };
+  const FRONT_PROVINCE_CAPITAL = {
+    '广西': '南宁', '广东': '广州', '四川': '成都', '浙江': '杭州', '云南': '昆明', '海南': '海口',
+    '黑龙江': '哈尔滨', '吉林': '长春', '辽宁': '沈阳', '河南': '郑州', '湖北': '武汉', '湖南': '长沙',
+    '江苏': '南京', '安徽': '合肥', '福建': '福州', '江西': '南昌', '山东': '济南', '山西': '太原',
+    '陕西': '西安', '甘肃': '兰州', '青海': '西宁', '贵州': '贵阳', '河北': '石家庄', '内蒙古': '呼和浩特',
+    '新疆': '乌鲁木齐', '西藏': '拉萨', '宁夏': '银川', '台湾': '台北'
+  };
+
+  function resolveFrontCityCoord(name) {
+    if (FRONT_CITY_COORDS[name]) return FRONT_CITY_COORDS[name];
+    const capital = FRONT_PROVINCE_CAPITAL[name];
+    if (capital && FRONT_CITY_COORDS[capital]) return FRONT_CITY_COORDS[capital];
+    const known = (window.LUSHU_CITY_CENTERS || {})[name];
+    if (known) return [known[0], known[1]];
+    return null;
+  }
+
+  function buildLocalTransport(departCity, destCity) {
+    const a = resolveFrontCityCoord(departCity);
+    const b = resolveFrontCityCoord(destCity);
+    const km = a && b ? geoDistance({ lat: a[0], lng: a[1] }, { lat: b[0], lng: b[1] }) : 800;
+    const roundKm = Math.max(100, Math.round(km / 50) * 50);
+    const from = departCity || '出发城市';
+    const to = destCity || '目的地';
+    const primaryReason = (mode, arrive, depart, focus) => `从${from}到${to}约 ${roundKm} 公里，${mode}时间效率高，${arrive}抵达正好衔接第一天行程，${depart}出发给返程留足缓冲，${focus}。`;
+    const backupReason = (mode, arrive, depart, focus) => `备选${mode}单程耗时更长但票价更省，适合预算优先的出行，${arrive}抵达、${depart}出发，${focus}。`;
+    let primary;
+    let backup;
+    if (km <= 500) {
+      primary = { mode: '高铁', arriveTime: '上午', departTime: '返程当天下午', duration: `${Math.max(1, Math.round(roundKm / 250 + 0.5))}-${Math.max(2, Math.round(roundKm / 220 + 0.5))} 小时`, priceRange: `约 ¥${Math.round(roundKm * 0.4 / 50) * 50} - ¥${Math.round(roundKm * 0.55 / 50) * 50}`, reason: primaryReason('高铁', '上午', '返程当天下午', '把完整白天留给游玩'), isBackup: false };
+      backup = { mode: '普速火车', arriveTime: '下午', departTime: '返程当天上午', duration: `${Math.round(roundKm / 140)}-${Math.round(roundKm / 110)} 小时`, priceRange: `约 ¥${Math.round(roundKm * 0.18 / 10) * 10} - ¥${Math.round(roundKm * 0.28 / 10) * 10}`, reason: backupReason('普速火车', '下午', '返程当天上午', '夜间卧铺还能省一晚住宿'), isBackup: true };
+    } else if (km <= 1500) {
+      primary = { mode: '高铁', arriveTime: '下午', departTime: '返程当天上午', duration: `${Math.max(2, Math.round(roundKm / 280 + 0.5))}-${Math.max(3, Math.round(roundKm / 250 + 1))} 小时`, priceRange: `约 ¥${Math.round(roundKm * 0.38 / 50) * 50} - ¥${Math.round(roundKm * 0.52 / 50) * 50}`, reason: primaryReason('高铁', '下午', '返程当天上午', '把首日安排留给下午和夜晚，返程留足缓冲'), isBackup: false };
+      backup = { mode: '飞机', arriveTime: '上午', departTime: '返程当天下午', duration: `约 ${Math.max(2, Math.round(roundKm / 700 + 2))}-${Math.max(3, Math.round(roundKm / 650 + 2.5))} 小时（含机场往返）`, priceRange: `约 ¥${Math.max(350, Math.round(roundKm * 0.55 / 50) * 50)} - ¥${Math.max(650, Math.round(roundKm * 0.9 / 50) * 50)}`, reason: backupReason('飞机', '上午', '返程当天下午', '中长途飞行节省体力，适合时间敏感场景'), isBackup: true };
+    } else {
+      primary = { mode: '飞机', arriveTime: '上午', departTime: '返程当天下午起飞', duration: `约 ${Math.max(3, Math.round(roundKm / 700 + 2))}-${Math.max(4, Math.round(roundKm / 650 + 2.5))} 小时（含机场往返）`, priceRange: `约 ¥${Math.max(600, Math.round(roundKm * 0.5 / 100) * 100)} - ¥${Math.max(1100, Math.round(roundKm * 0.9 / 100) * 100)}`, reason: primaryReason('飞机', '上午', '返程当天下午起飞', '务必预留机场往返市区的通勤时间'), isBackup: false };
+      backup = { mode: '高铁', arriveTime: '下午', departTime: '返程当天上午', duration: `${Math.max(6, Math.round(roundKm / 260))}-${Math.max(8, Math.round(roundKm / 240))} 小时`, priceRange: `约 ¥${Math.round(roundKm * 0.4 / 50) * 50} - ¥${Math.round(roundKm * 0.55 / 50) * 50}`, reason: backupReason('高铁', '下午', '返程当天上午', '长途高铁票价更稳、准点率高，避免机场天气影响'), isBackup: true };
+    }
+    return { plans: [primary, backup] };
+  }
   function buildLocalFramework(plan) {
     const city = cityFor(plan);
     const foodPool = getPool(city, 'food');
     const lodgingPool = (window.LUSHU_LODGING || {})[plan.destination] || [];
     const departCity = (lastForm && lastForm.departCity) || '出发城市';
     return {
-      transport: {
-        plans: [
-          {
-            mode: '高铁',
-            arriveTime: '下午',
-            departTime: '返程当天上午',
-            duration: '3-5 小时',
-            priceRange: '¥300 - ¥600',
-            reason: `从${departCity}出发乘高铁抵达，下午到站办理入住后正好衔接第一天的傍晚行程；返程安排在上午，预留充足时间去车站。`,
-            isBackup: false
-          },
-          {
-            mode: '飞机',
-            arriveTime: '上午',
-            departTime: '返程当天下午',
-            duration: '2-3 小时（含机场往返）',
-            priceRange: '¥400 - ¥800',
-            reason: `若${departCity}直飞航班充足，上午抵达可在第一天安排更多游玩时间；返程下午起飞，上午还能收尾打卡。`,
-            isBackup: true
-          }
-        ]
-      },
+      transport: buildLocalTransport(departCity, plan.destination),
       lodgingAreas: lodgingPool.slice(0, 4).map(item => ({
         name: item.area,
         priceRange: `约 ${fmtMoney(item.price)}/晚`,
