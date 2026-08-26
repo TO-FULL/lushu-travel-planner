@@ -1104,6 +1104,11 @@
     return null;
   }
 
+  function normalizeDestinationCityName(name) {
+    const capital = FRONT_PROVINCE_CAPITAL[name];
+    return capital ? capital + '市' : name;
+  }
+
   function buildLocalTransport(departCity, destCity) {
     const a = resolveFrontCityCoord(departCity);
     const b = resolveFrontCityCoord(destCity);
@@ -1132,17 +1137,27 @@
     const foodPool = getPool(city, 'food');
     const lodgingPool = (window.LUSHU_LODGING || {})[plan.destination] || [];
     const departCity = (lastForm && lastForm.departCity) || '出发城市';
+    const fallbackAreas = (() => {
+      const destName = normalizeDestinationCityName(plan.destination);
+      return [
+        { name: `${destName}市中心`, tag: '市中心', priceRange: '约 ¥350 - ¥550/晚', pros: '交通便利、餐饮集中，第一次来最稳妥', cons: '高峰期人流量大、停车不便', hotelExamples: `${destName}市中心商务酒店` },
+        { name: `${destName}老城区`, tag: '老城区', priceRange: '约 ¥250 - ¥450/晚', pros: '老街巷与地道小吃多，烟火气足', cons: '部分老楼隔音一般', hotelExamples: `${destName}老街精品民宿` },
+        { name: `${destName}滨水区`, tag: '滨江/湖边', priceRange: '约 ¥400 - ¥650/晚', pros: '景观好、适合散步看夜景', cons: '餐饮选择相对少', hotelExamples: `${destName}滨水景观酒店` },
+        { name: `${destName}文化区`, tag: '文化区', priceRange: '约 ¥300 - ¥500/晚', pros: '博物馆、文创园集中，安静好逛', cons: '夜生活选择偏少', hotelExamples: `${destName}文化区设计酒店` }
+      ];
+    })();
+    const pooledAreas = lodgingPool.slice(0, 4).map(item => ({
+      name: item.area,
+      tag: /湖|江|海|河/.test(item.area) ? '滨水' : (/古|老|老街/.test(item.area) ? '老城区' : (/中心|广场|商圈/.test(item.area) ? '市中心' : '核心区')),
+      priceRange: `约 ${fmtMoney(item.price)}/晚`,
+      pros: item.desc,
+      cons: '节假日价格会明显上浮',
+      hotelExamples: item.name
+    }));
     return {
       transport: buildLocalTransport(departCity, plan.destination),
       lodgingAreas: {
-        areas: lodgingPool.slice(0, 4).map(item => ({
-          name: item.area,
-          tag: /湖|江|海|河/.test(item.area) ? '滨水' : (/古|老|老街/.test(item.area) ? '老城区' : (/中心|广场|商圈/.test(item.area) ? '市中心' : '核心区')),
-          priceRange: `约 ${fmtMoney(item.price)}/晚`,
-          pros: item.desc,
-          cons: '节假日价格会明显上浮',
-          hotelExamples: item.name
-        })),
+        areas: pooledAreas.length ? pooledAreas : fallbackAreas,
         disclaimer: '酒店价格仅为规划参考，实际预订价格请以酒店平台实时信息为准。'
       },
       foodList: foodPool.slice(0, 6).map(item => ({
