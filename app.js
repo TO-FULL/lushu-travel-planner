@@ -973,6 +973,7 @@
     const lodgingAreas = framework.lodgingAreas || [];
     const foodList = framework.foodList || [];
     container.innerHTML = `
+      <div class="constraint-note">本行程基于优先往返交通方案与首推住宿片区生成，抵达与返程时段已预留缓冲。</div>
       <div class="tp-section tp-transport">
         <div class="tp-head">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a4 4 0 0 1 4 4v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M4 11h16M8 17v2M16 17v2"/></svg>
@@ -1053,7 +1054,7 @@
       </div>
       <p class="breakdown-title">天气与穿衣</p>
       <div class="guide-block">
-        <div class="guide-row"><strong>天气预判</strong><span>${guide.weather || '出发前查询当地天气，按季节备衣'}</span></div>
+        <div class="guide-row"><strong>天气预判</strong><span>${guide.weather || '出发前查询当地天气，按季节备衣'}</span><em class="guide-note">*仅为季节气候预判，实际出行前请查询当地实时天气预报</em></div>
         <div class="guide-row"><strong>穿衣建议</strong><span>${guide.clothing || '舒适轻便为主，备一件外套应对温差'}</span></div>
       </div>
       <p class="breakdown-title">游玩注意事项</p>
@@ -1111,8 +1112,8 @@
         note: item.desc
       })),
       guide: {
-        weather: '出发前查询当地 7 天天气，按季节备衣',
-        clothing: '舒适轻便为主，早晚备一件薄外套',
+        weather: `${new Date().getMonth() + 1} 月当地以${new Date().getMonth() + 1 >= 3 && new Date().getMonth() + 1 <= 5 ? '温和湿润' : (new Date().getMonth() + 1 >= 6 && new Date().getMonth() + 1 <= 8 ? '炎热多雨' : (new Date().getMonth() + 1 >= 9 && new Date().getMonth() + 1 <= 11 ? '凉爽舒适' : '干冷'))}为主，早晚温差明显，出行前请确认实时天气`,
+        clothing: '建议携带一件薄外套应对早晚温差，夏季备防晒衣与雨具，冬季备保暖层与防滑鞋',
         notes: ['热门景点建议提前 3-7 天预约', '周一博物馆闭馆，出发前确认开放时间'],
         pitfalls: ['谨慎选择路边揽客的一日游', '景区门口购物先比价'],
         tips: ['下载离线地图，随身携带充电宝', '市内出行优先地铁，高峰期预留时间']
