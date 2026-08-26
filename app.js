@@ -806,6 +806,8 @@
     const timeMap = PACE_TIMES[pace] || PACE_TIMES['深度打卡'];
     let slots = SLOTS.slice();
     if (pace === '懒人慢游') slots = slots.filter(slot => slot.key !== 'evening');
+    const isLastDay = days > 1 && dayIndex === days - 1;
+    if (isLastDay) slots = slots.filter(slot => slot.key === 'morning' || slot.key === 'lunch');
 
       const items = slots.flatMap(slot => {
         const time = timeMap[slot.key] || slot.time;
@@ -1220,7 +1222,7 @@
       area: '车站/机场',
       cost: estimateOneWayIntercityCost(plan),
       duration: 0,
-      desc: `${dest} → ${depart}，预留充足前往车站/机场缓冲时间。`,
+      desc: `${dest} → ${depart}，预留充足前往车站/机场缓冲时间。建议预留充足时间前往车站/机场，可根据你的车次自行向上拖动调整顺序。`,
       tags: ['交通', '返程'],
       slotLabel: '交通-返程',
       time: '返程日',
@@ -1263,13 +1265,13 @@
       updateEntryFields(existingReturn, ret);
       if (!plan._intercityPlaced) {
         const index = lastDay.items.indexOf(existingReturn);
-        if (index > 0) {
+        if (index < lastDay.items.length - 1) {
           lastDay.items.splice(index, 1);
-          lastDay.items.unshift(existingReturn);
+          lastDay.items.push(existingReturn);
         }
       }
     } else {
-      lastDay.items.unshift(ret);
+      lastDay.items.push(ret);
     }
     plan._intercityPlaced = true;
     return plan;
@@ -2563,6 +2565,10 @@ function tipFor(plan) {
       return day;
     });
     plan.dayCount = plan.days.length;
+    if (plan.dayCount > 1) {
+      const lastCloudDay = plan.days[plan.dayCount - 1];
+      lastCloudDay.items = lastCloudDay.items.filter(item => item && (item.slotKey === 'morning' || item.slotKey === 'lunch'));
+    }
     plan.people = Number(plan.people) || form.people || 2;
     plan.budget = Number(plan.budget) || form.budget;
     plan.budgetRange = plan.budgetRange || form.budgetRange;
