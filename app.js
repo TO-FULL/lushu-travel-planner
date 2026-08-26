@@ -1177,65 +1177,101 @@
     };
   }
 
-  function isReturnEntry(item) {
-    return !!(item && item.cat === 'transport' && /返程/.test(String(item.name || '')));
+  function isIntercityEntry(item) {
+    return !!(item && item.cat === 'transport' && /大交通/.test(String(item.name || '')));
   }
 
-  function returnPlacementFor(plan) {
-    const timeText = String(plan.returnTime || ((lastForm && lastForm.returnTime) || '')).trim();
-    if (timeText) {
-      const matched = /(\d{1,2})[:：时]?(\d{2})?/.exec(timeText);
-      if (matched) return parseInt(matched[1], 10) <= 12 ? 'top' : 'bottom';
-    }
-    return 'bottom';
+  function intercityCities(plan) {
+    const depart = (lastForm && lastForm.departCity) || plan.departCity || plan.departureCity || '出发城市';
+    const dest = plan.destination || '目的地';
+    return { depart, dest };
   }
 
-  function buildReturnItem(plan) {
+  function estimateOneWayIntercityCost(plan) {
     const framework = plan.framework || buildLocalFramework(plan);
     const primary = (framework.transport && framework.transport.plans || []).find(p => !p.isBackup) || (framework.transport && framework.transport.plans || [])[0];
-    const mode = primary ? primary.mode : '高铁/飞机';
-    const departTime = (primary && primary.departTime) || '返程当天';
-    const knownTime = String(plan.returnTime || ((lastForm && lastForm.returnTime) || '')).trim();
-    const tip = knownTime ? '' : '建议预留充足时间前往车站/机场，可根据你的车次自行向上拖动调整顺序。';
-    const desc = knownTime ? `返程大交通按 ${knownTime} 出发，请提前抵达车站/机场。` : `按${mode}方案${departTime}出发返程。${tip}`;
+    if (!primary || !primary.priceRange) return 0;
+    const nums = String(primary.priceRange).match(/\d+(?:\.\d+)?/g);
+    if (!nums || !nums.length) return 0;
+    const values = nums.map(Number);
+    return Math.round((Math.min(...values) + Math.max(...values)) / 2 / 10) * 10;
+  }
+
+  function buildArrivalItem(plan) {
+    const { depart, dest } = intercityCities(plan);
     return {
-      name: '返程大交通',
+      name: '抵达大交通',
       area: '车站/机场',
-      cost: 0,
+      cost: estimateOneWayIntercityCost(plan),
       duration: 0,
-      desc,
-      tags: ['返程', '大交通'],
-      slotLabel: '返程',
-      time: knownTime || departTime,
+      desc: `${depart} → ${dest}，根据出行时长预留抵达缓冲。`,
+      tags: ['交通', '抵达'],
+      slotLabel: '交通-抵达',
+      time: '抵达日',
       cat: 'transport',
       fixed: false
     };
   }
 
-  function ensureReturnEntry(plan) {
+  function buildReturnItem(plan) {
+    const { depart, dest } = intercityCities(plan);
+    return {
+      name: '返程大交通',
+      area: '车站/机场',
+      cost: estimateOneWayIntercityCost(plan),
+      duration: 0,
+      desc: `${dest} → ${depart}，预留充足前往车站/机场缓冲时间。`,
+      tags: ['交通', '返程'],
+      slotLabel: '交通-返程',
+      time: '返程日',
+      cat: 'transport',
+      fixed: false
+    };
+  }
+
+  function updateEntryFields(target, source) {
+    target.name = source.name;
+    target.area = source.area;
+    target.cost = source.cost;
+    target.duration = source.duration;
+    target.desc = source.desc;
+    target.tags = source.tags;
+    target.slotLabel = source.slotLabel;
+    target.time = source.time;
+    target.cat = source.cat;
+    target.fixed = false;
+  }
+
+  function ensureIntercityEntries(plan) {
     if (!plan || !Array.isArray(plan.days) || !plan.days.length) return plan;
+    const firstDay = plan.days[0];
     const lastDay = plan.days[plan.days.length - 1];
-    if (!lastDay || !Array.isArray(lastDay.items)) return plan;
-    const existing = lastDay.items.find(isReturnEntry);
-    const item = buildReturnItem(plan);
-    if (existing) {
-      existing.name = item.name;
-      existing.area = item.area;
-      existing.cost = item.cost;
-      existing.duration = item.duration;
-      existing.desc = item.desc;
-      existing.tags = item.tags;
-      existing.slotLabel = item.slotLabel;
-      existing.time = item.time;
-      existing.cat = item.cat;
-      existing.fixed = false;
-      return plan;
+    if (!firstDay || !Array.isArray(firstDay.items) || !lastDay || !Array.isArray(lastDay.items)) return plan;
+    const { depart, dest } = intercityCities(plan);
+    if (depart && depart !== dest) {
+      const arrival = buildArrivalItem(plan);
+      const existingArrival = firstDay.items.find(item => item && item.name === '抵达大交通');
+      if (existingArrival) {
+        updateEntryFields(existingArrival, arrival);
+      } else {
+        firstDay.items.unshift(arrival);
+      }
     }
-    if (returnPlacementFor(plan) === 'top') {
-      lastDay.items.unshift(item);
+    const ret = buildReturnItem(plan);
+    const existingReturn = lastDay.items.find(item => isIntercityEntry(item) && item.name === '返程大交通');
+    if (existingReturn) {
+      updateEntryFields(existingReturn, ret);
+      if (!plan._intercityPlaced) {
+        const index = lastDay.items.indexOf(existingReturn);
+        if (index > 0) {
+          lastDay.items.splice(index, 1);
+          lastDay.items.unshift(existingReturn);
+        }
+      }
     } else {
-      lastDay.items.push(item);
+      lastDay.items.unshift(ret);
     }
+    plan._intercityPlaced = true;
     return plan;
   }
 
@@ -1324,7 +1360,7 @@
       const minIndex = arriveSlotIndex(primary.arriveTime);
       const firstDay = plan.days[0];
       if (firstDay && firstDay.items) {
-        const kept = firstDay.items.filter(item => (order[item.slotKey] !== undefined ? order[item.slotKey] : 0) >= minIndex);
+        const kept = firstDay.items.filter(item => isIntercityEntry(item) || (order[item.slotKey] !== undefined ? order[item.slotKey] : 0) >= minIndex);
         firstDay.items = kept.length ? kept : firstDay.items.slice(-1);
       }
     }
@@ -1352,7 +1388,7 @@ function tipFor(plan) {
 
   function itemHTML(plan, item, dayIndex, itemIndex, prevItem) {
     const fixed = Boolean(item.fixed);
-    const isReturn = isReturnEntry(item);
+    const isIntercity = isIntercityEntry(item);
     let transferText = '';
     if (!fixed && prevItem) {
       const city = cityFor(plan);
@@ -1383,7 +1419,7 @@ function tipFor(plan) {
                   <svg class="checked" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>
                 </button>`}
               <span class="item-cost">${item.cost ? fmtMoney(item.cost) : '免费'}</span>
-              ${fixed || isReturn ? '' : `
+              ${fixed || isIntercity ? '' : `
                 <button class="item-delete" type="button" data-day="${dayIndex}" data-index="${itemIndex}" aria-label="删除 ${item.name}">
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>
                 </button>`}
@@ -1433,19 +1469,20 @@ function tipFor(plan) {
       cat: 'stay',
       fixed: true
     };
-    const editableItems = day.items.slice();
-    const truncated = editableItems.length > 14 && !day._expanded;
-    let shownItems = truncated ? editableItems.slice(0, 14) : editableItems;
-    if (truncated && isLastDay) {
-      const hiddenReturns = editableItems.slice(14).filter(isReturnEntry);
-      if (hiddenReturns.length) shownItems = shownItems.concat(hiddenReturns);
-    }
+    const items = day.items.slice();
+    let leadingCount = 0;
+    while (leadingCount < items.length && isIntercityEntry(items[leadingCount])) leadingCount += 1;
+    const tailItems = items.slice(leadingCount);
+    const truncated = tailItems.length > 14 && !day._expanded;
+    const shownTail = truncated ? tailItems.slice(0, 14) : tailItems;
     const mode = plan.transportMode && plan.transportMode[index] ? plan.transportMode[index] : 'transit';
     const itemsHTML = [
+      ...items.slice(0, leadingCount).map((item, itemIndex) => itemHTML(plan, item, index, itemIndex, itemIndex > 0 ? items[itemIndex - 1] : null)),
       itemHTML(plan, topItem, index, -1),
-      ...shownItems.map((item, itemIndex) => {
-        const prevItem = itemIndex > 0 ? shownItems[itemIndex - 1] : topItem;
-        return itemHTML(plan, item, index, itemIndex, prevItem);
+      ...shownTail.map((item, itemIndex) => {
+        const realIndex = itemIndex + leadingCount;
+        const prevItem = realIndex > 0 ? items[realIndex - 1] : topItem;
+        return itemHTML(plan, item, index, realIndex, prevItem);
       }),
       ...(isLastDay ? [] : [itemHTML(plan, stayItem, index, -2)])
     ].join('');
@@ -1916,7 +1953,7 @@ function tipFor(plan) {
 
   function dedupePlan(plan) {
     if (!plan || !plan.days) return plan;
-    ensureReturnEntry(plan);
+    ensureIntercityEntries(plan);
     const city = cityFor(plan);
     const seen = new Set();
     const placeholderNames = new Set(['酒店附近早餐', '沿途简餐', '简单晚餐', '市内交通预留', '住宿预留']);
