@@ -210,6 +210,7 @@ const SYSTEM_PROMPT = `你是一位专业的旅行行程规划师。根据用户
 4. 预算要落在用户预算区间内，住宿和交通费用单列。
 5. 结合用户核心偏好（美食/历史/自然/休闲，最多两项）分配重点：美食偏好多安排当地特色餐饮，历史偏好多安排古迹博物馆，自然偏好多安排山水公园，休闲偏好节奏放慢、少排队。
 6. 只输出每日行程 JSON，不要在 JSON 中输出任何规划说明性文字（例如“本行程基于优先交通方案生成”“以上安排仅供参考”），这类说明由前端页面统一展示。
+7. 最后一天（返程日）只安排上午景点、早餐或午餐，所有游玩项目必须在 12:00 前结束；禁止生成下午、晚餐、夜晚、夜景、夜晚漫步等项目。
 
 JSON 结构：
 {
@@ -272,6 +273,10 @@ function normalizeAiPlan(raw, form) {
       cost: itemsCost + lodgingPrice + transport
     };
   });
+  if (days.length > 1) {
+    const lastDay = days[days.length - 1];
+    lastDay.items = lastDay.items.filter(item => item && (item.slotKey === 'morning' || item.slotKey === 'lunch'));
+  }
 
   const totalCost = days.reduce((sum, day) => sum + day.cost, 0);
   const budget = Math.max(1, Math.round(Number(raw.budget) || form.budget || 4000));
@@ -435,7 +440,7 @@ async function generateWithDeepSeek(form) {
 
   // 第二步：生成每日详细行程，框架作为硬性约束
   const stepFramework = { ...framework, lodgingAreas: framework.lodgingAreas.areas };
-  const dailyContent = userContent + `\n\n以下是已确定的顶层规划框架，必须作为硬性约束严格执行：\n${JSON.stringify(stepFramework)}\n\n硬性约束：\n1. 交通基准：只采用 transport.plans 中 isBackup=false 的优先方案。第一天行程强度必须匹配该方案的 arriveTime（如下午抵达则第一天只安排傍晚/夜间活动，不安排上午项目）；最后一天根据 departTime 预留充足返程缓冲时间，不安排卡点游玩项目。备选交通方案仅用于页面展示，不参与行程计算。\n2. 区位基准：以 lodgingAreas 数组中第一条作为游玩中心点，每日景点和就餐点位就近围绕该片区排布，减少远距离往返奔波。\n3. 美食约束：每日午餐/晚餐优先采用 foodList 中的美食，并优先选择靠近中心住宿片区的就餐街区。\n4. 基础约束：严格控制在表单预算上下限内，结合出行偏好（prefs）与补充需求（notes）控制行程节奏。\n5. 输出限制：只输出每日行程 JSON，不要在内容中出现“本行程基于优先交通方案生成”“基于首推住宿片区规划”等说明性文字，这类提示由前端统一展示。`;
+  const dailyContent = userContent + `\n\n以下是已确定的顶层规划框架，必须作为硬性约束严格执行：\n${JSON.stringify(stepFramework)}\n\n硬性约束：\n1. 交通基准：只采用 transport.plans 中 isBackup=false 的优先方案。第一天行程强度必须匹配该方案的 arriveTime（如下午抵达则第一天只安排傍晚/夜间活动，不安排上午项目）；最后一天根据 departTime 预留充足返程缓冲时间，不安排卡点游玩项目。备选交通方案仅用于页面展示，不参与行程计算。\n2. 区位基准：以 lodgingAreas 数组中第一条作为游玩中心点，每日景点和就餐点位就近围绕该片区排布，减少远距离往返奔波。\n3. 美食约束：每日午餐/晚餐优先采用 foodList 中的美食，并优先选择靠近中心住宿片区的就餐街区。\n4. 基础约束：严格控制在表单预算上下限内，结合出行偏好（prefs）与补充需求（notes）控制行程节奏。\n5. 输出限制：只输出每日行程 JSON，不要在内容中出现“本行程基于优先交通方案生成”“基于首推住宿片区规划”等说明性文字，这类提示由前端统一展示。\n6. 返程日约束：最后一天只安排上午景点、早餐或午餐，所有游玩项目必须在 12:00 前结束；禁止生成下午、晚餐、夜晚、夜景、夜晚漫步等项目；返程大交通卡片由前端统一生成，不要在 JSON 中输出返程条目。`;
   const raw = await callDeepSeek([
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: dailyContent }
