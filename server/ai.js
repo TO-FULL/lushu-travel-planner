@@ -130,6 +130,16 @@ function buildTransportByDistance(departCity, destCity) {
   return { plans: [primary, backup] };
 }
 
+function fallbackLodgingAreas(destCity) {
+  const name = destCity || '目的地';
+  return [
+    { name: `${name}市中心`, tag: '市中心', priceRange: '约 ¥350 - ¥550/晚', pros: '交通便利、餐饮集中，第一次来最稳妥', cons: '高峰期人流量大、停车不便', hotelExamples: `${name}市中心商务酒店` },
+    { name: `${name}老城区`, tag: '老城区', priceRange: '约 ¥250 - ¥450/晚', pros: '老街巷与地道小吃多，烟火气足', cons: '部分老楼隔音一般', hotelExamples: `${name}老街精品民宿` },
+    { name: `${name}滨水区`, tag: '滨江/湖边', priceRange: '约 ¥400 - ¥650/晚', pros: '景观好、适合散步看夜景', cons: '餐饮选择相对少', hotelExamples: `${name}滨水景观酒店` },
+    { name: `${name}文化区`, tag: '文化区', priceRange: '约 ¥300 - ¥500/晚', pros: '博物馆、文创园集中，安静好逛', cons: '夜生活选择偏少', hotelExamples: `${name}文化区设计酒店` }
+  ];
+}
+
 const SYSTEM_PROMPT = `你是一位专业的旅行行程规划师。根据用户提供的出行信息，生成一份真实、合理、可直接使用的每日行程。
 
 要求：
@@ -261,7 +271,7 @@ JSON 结构：
     ]
   },
   "lodgingAreas": [
-    { "name": "片区名", "priceRange": "每晚参考价格区间", "pros": "优势理由", "cons": "缺点提醒", "hotelExamples": "1 家示例酒店/民宿名称（仅举例）" }
+    { "name": "片区名", "tag": "区位标签（市中心/老城区/滨江/湖边/文化区等）", "priceRange": "每晚参考价格区间", "pros": "优势理由", "cons": "缺点提醒", "hotelExamples": "1 家示例酒店/民宿名称（仅举例）" }
   ],
   "foodList": [
     { "name": "本地必吃美食名", "area": "推荐就餐街区", "note": "一句话介绍" }
@@ -278,7 +288,7 @@ JSON 结构：
 要求：
 1. 仅根据出发城市与目的地的地理距离估算交通时长，不要调用实时票务接口，不要编造具体车次。按距离分级选择方案：短途（约 500km 内）优先高铁、备选普速火车；中长途（约 500-1500km）优先高铁、备选飞机；长途（约 1500km 以上）优先飞机、备选高铁。每项必须包含抵达时段、返程时段、单程时长（估算）、参考票价区间和明确理由；禁止输出“上午或下午均可”这类模糊套话。
 2. 优先与备选两段文案必须原创、避免模板化套话，且侧重点明显不同：优先方案侧重时间效率与第一天游玩衔接，备选方案侧重经济性或直达便捷性；抵返时段建议要与第一天和最后一天的游玩安排相匹配。
-3. 住宿片区推荐 3-4 个，按游玩热度从高到低排序，每个片区给出每晚参考价格区间、优势、缺点、1 家示例酒店。
+3. 住宿片区推荐是必生成模块，必须输出 3-4 个，禁止为空；按游玩热度从高到低排序，每个片区给出片区名、区位标签、每晚参考价格区间、优势、缺点、1 家示例酒店。
 4. 美食只推荐当地必吃美食 4-6 项，不要特产，每项给出推荐就餐街区。
 5. guide 中按出行月份给出天气穿衣建议、游玩注意事项、避坑提醒、出行小贴士。weather 必须包含具体温度范围、降雨与日晒特点；clothing 必须给出具体可携带衣物（如薄外套、防晒衣、雨伞），禁止空泛话术。
 6. 只做顶层规划，不要输出任何每日景点安排。`;
@@ -345,6 +355,10 @@ async function generateWithDeepSeek(form) {
   ], 4000);
   // 交通方案改用程序化距离分级，避免模型估算距离出错
   framework.transport = buildTransportByDistance(form.departCity, form.destination);
+  // 住宿片区为必生成模块，为空时用程序化兜底
+  if (!Array.isArray(framework.lodgingAreas) || !framework.lodgingAreas.length) {
+    framework.lodgingAreas = fallbackLodgingAreas(form.destination);
+  }
 
   // 第二步：生成每日详细行程，框架作为硬性约束
   const dailyContent = userContent + `\n\n以下是已确定的顶层规划框架，必须作为硬性约束严格执行：\n${JSON.stringify(framework)}\n\n硬性约束：\n1. 交通基准：只采用 transport.plans 中 isBackup=false 的优先方案。第一天行程强度必须匹配该方案的 arriveTime（如下午抵达则第一天只安排傍晚/夜间活动，不安排上午项目）；最后一天根据 departTime 预留充足返程缓冲时间，不安排卡点游玩项目。备选交通方案仅用于页面展示，不参与行程计算。\n2. 区位基准：以 lodgingAreas 数组中第一条作为游玩中心点，每日景点和就餐点位就近围绕该片区排布，减少远距离往返奔波。\n3. 美食约束：每日午餐/晚餐优先采用 foodList 中的美食，并优先选择靠近中心住宿片区的就餐街区。\n4. 基础约束：严格控制在表单预算上下限内，结合出行偏好（prefs）与补充需求（notes）控制行程节奏。\n5. 输出限制：只输出每日行程 JSON，不要在内容中出现“本行程基于优先交通方案生成”“基于首推住宿片区规划”等说明性文字，这类提示由前端统一展示。`;
