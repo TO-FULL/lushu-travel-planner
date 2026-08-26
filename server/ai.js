@@ -14,6 +14,122 @@ const SLOT_LABEL = {
   evening: '夜晚'
 };
 
+const CITY_COORDS = {
+  '北京': [39.90, 116.41], '上海': [31.23, 121.47], '广州': [23.13, 113.26], '深圳': [22.54, 114.06],
+  '成都': [30.57, 104.07], '重庆': [29.56, 106.55], '杭州': [30.27, 120.16], '南京': [32.06, 118.80],
+  '苏州': [31.30, 120.59], '天津': [39.08, 117.20], '武汉': [30.59, 114.31], '西安': [34.34, 108.94],
+  '长沙': [28.23, 112.94], '郑州': [34.75, 113.63], '济南': [36.65, 117.12], '青岛': [36.07, 120.38],
+  '厦门': [24.48, 118.09], '福州': [26.07, 119.30], '昆明': [25.04, 102.71], '贵阳': [26.65, 106.63],
+  '南宁': [22.82, 108.32], '海口': [20.04, 110.32], '三亚': [18.25, 109.51], '哈尔滨': [45.80, 126.53],
+  '长春': [43.82, 125.32], '沈阳': [41.80, 123.43], '大连': [38.91, 121.61], '石家庄': [38.04, 114.51],
+  '太原': [37.87, 112.55], '呼和浩特': [40.84, 111.75], '兰州': [36.06, 103.83], '西宁': [36.62, 101.78],
+  '银川': [38.49, 106.23], '乌鲁木齐': [43.83, 87.62], '拉萨': [29.65, 91.14], '合肥': [31.82, 117.23],
+  '南昌': [28.68, 115.86], '桂林': [25.27, 110.29], '大理': [25.61, 100.27], '丽江': [26.87, 100.23],
+  '洛阳': [34.62, 112.45], '香港': [22.32, 114.17], '澳门': [22.20, 113.55], '台北': [25.03, 121.57]
+};
+
+const PROVINCE_CAPITAL = {
+  '广西': '南宁', '广东': '广州', '四川': '成都', '浙江': '杭州', '云南': '昆明', '海南': '海口',
+  '黑龙江': '哈尔滨', '吉林': '长春', '辽宁': '沈阳', '河南': '郑州', '湖北': '武汉', '湖南': '长沙',
+  '江苏': '南京', '安徽': '合肥', '福建': '福州', '江西': '南昌', '山东': '济南', '山西': '太原',
+  '陕西': '西安', '甘肃': '兰州', '青海': '西宁', '贵州': '贵阳', '河北': '石家庄', '内蒙古': '呼和浩特',
+  '新疆': '乌鲁木齐', '西藏': '拉萨', '宁夏': '银川', '台湾': '台北'
+};
+
+function geoDistanceKm(a, b) {
+  const R = 6371;
+  const dLat = (b[0] - a[0]) * Math.PI / 180;
+  const dLng = (b[1] - a[1]) * Math.PI / 180;
+  const lat1 = a[0] * Math.PI / 180;
+  const lat2 = b[0] * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function resolveCityCoord(name) {
+  const city = CITY_COORDS[name];
+  if (city) return city;
+  const capital = PROVINCE_CAPITAL[name];
+  return capital ? CITY_COORDS[capital] : null;
+}
+
+function buildTransportByDistance(departCity, destCity) {
+  const a = resolveCityCoord(departCity);
+  const b = resolveCityCoord(destCity);
+  const km = a && b ? geoDistanceKm(a, b) : null;
+  const distance = km === null ? 800 : km;
+  const roundKm = Math.max(100, Math.round(distance / 50) * 50);
+  const from = departCity || '出发城市';
+  const to = destCity || '目的地';
+
+  const primaryReason = (mode, arrive, depart, focus) =>
+    `从${from}到${to}约 ${roundKm} 公里，${mode}时间效率高，${arrive}抵达正好衔接第一天行程，${depart}出发给返程留足缓冲，${focus}。`;
+  const backupReason = (mode, arrive, depart, focus) =>
+    `备选${mode}单程耗时更长但票价更省，适合预算优先的出行，${arrive}抵达、${depart}出发，${focus}。`;
+
+  let primary;
+  let backup;
+  if (distance <= 500) {
+    primary = {
+      mode: '高铁',
+      arriveTime: '上午',
+      departTime: '返程当天下午',
+      duration: `${Math.max(1, Math.round(roundKm / 250 + 0.5))}-${Math.max(2, Math.round(roundKm / 220 + 0.5))} 小时`,
+      priceRange: `约 ¥${Math.round(roundKm * 0.4 / 50) * 50} - ¥${Math.round(roundKm * 0.55 / 50) * 50}`,
+      reason: primaryReason('高铁', '上午', '返程当天下午', '把完整白天留给游玩'),
+      isBackup: false
+    };
+    backup = {
+      mode: '普速火车',
+      arriveTime: '下午',
+      departTime: '返程当天上午',
+      duration: `${Math.round(roundKm / 140)}-${Math.round(roundKm / 110)} 小时`,
+      priceRange: `约 ¥${Math.round(roundKm * 0.18 / 10) * 10} - ¥${Math.round(roundKm * 0.28 / 10) * 10}`,
+      reason: backupReason('普速火车', '下午', '返程当天上午', '夜间卧铺还能省一晚住宿'),
+      isBackup: true
+    };
+  } else if (distance <= 1500) {
+    primary = {
+      mode: '高铁',
+      arriveTime: '下午',
+      departTime: '返程当天上午',
+      duration: `${Math.max(2, Math.round(roundKm / 280 + 0.5))}-${Math.max(3, Math.round(roundKm / 250 + 1))} 小时`,
+      priceRange: `约 ¥${Math.round(roundKm * 0.38 / 50) * 50} - ¥${Math.round(roundKm * 0.52 / 50) * 50}`,
+      reason: primaryReason('高铁', '下午', '返程当天上午', '把首日安排留给下午和夜晚，返程留足缓冲'),
+      isBackup: false
+    };
+    backup = {
+      mode: '飞机',
+      arriveTime: '上午',
+      departTime: '返程当天下午',
+      duration: `约 ${Math.max(2, Math.round(roundKm / 700 + 2))}-${Math.max(3, Math.round(roundKm / 650 + 2.5))} 小时（含机场往返）`,
+      priceRange: `约 ¥${Math.max(350, Math.round(roundKm * 0.55 / 50) * 50)} - ¥${Math.max(650, Math.round(roundKm * 0.9 / 50) * 50)}`,
+      reason: backupReason('飞机', '上午', '返程当天下午', '中长途飞行节省体力，适合时间敏感场景'),
+      isBackup: true
+    };
+  } else {
+    primary = {
+      mode: '飞机',
+      arriveTime: '上午',
+      departTime: '返程当天下午起飞',
+      duration: `约 ${Math.max(3, Math.round(roundKm / 700 + 2))}-${Math.max(4, Math.round(roundKm / 650 + 2.5))} 小时（含机场往返）`,
+      priceRange: `约 ¥${Math.max(600, Math.round(roundKm * 0.5 / 100) * 100)} - ¥${Math.max(1100, Math.round(roundKm * 0.9 / 100) * 100)}`,
+      reason: primaryReason('飞机', '上午', '返程当天下午起飞', '务必预留机场往返市区的通勤时间'),
+      isBackup: false
+    };
+    backup = {
+      mode: '高铁',
+      arriveTime: '下午',
+      departTime: '返程当天上午',
+      duration: `${Math.max(6, Math.round(roundKm / 260))}-${Math.max(8, Math.round(roundKm / 240))} 小时`,
+      priceRange: `约 ¥${Math.round(roundKm * 0.4 / 50) * 50} - ¥${Math.round(roundKm * 0.55 / 50) * 50}`,
+      reason: backupReason('高铁', '下午', '返程当天上午', '长途高铁票价更稳、准点率高，避免机场天气影响'),
+      isBackup: true
+    };
+  }
+  return { plans: [primary, backup] };
+}
+
 const SYSTEM_PROMPT = `你是一位专业的旅行行程规划师。根据用户提供的出行信息，生成一份真实、合理、可直接使用的每日行程。
 
 要求：
@@ -227,6 +343,8 @@ async function generateWithDeepSeek(form) {
     { role: 'system', content: FRAMEWORK_PROMPT },
     { role: 'user', content: userContent }
   ], 4000);
+  // 交通方案改用程序化距离分级，避免模型估算距离出错
+  framework.transport = buildTransportByDistance(form.departCity, form.destination);
 
   // 第二步：生成每日详细行程，框架作为硬性约束
   const dailyContent = userContent + `\n\n以下是已确定的顶层规划框架，必须作为硬性约束严格执行：\n${JSON.stringify(framework)}\n\n硬性约束：\n1. 交通基准：只采用 transport.plans 中 isBackup=false 的优先方案。第一天行程强度必须匹配该方案的 arriveTime（如下午抵达则第一天只安排傍晚/夜间活动，不安排上午项目）；最后一天根据 departTime 预留充足返程缓冲时间，不安排卡点游玩项目。备选交通方案仅用于页面展示，不参与行程计算。\n2. 区位基准：以 lodgingAreas 数组中第一条作为游玩中心点，每日景点和就餐点位就近围绕该片区排布，减少远距离往返奔波。\n3. 美食约束：每日午餐/晚餐优先采用 foodList 中的美食，并优先选择靠近中心住宿片区的就餐街区。\n4. 基础约束：严格控制在表单预算上下限内，结合出行偏好（prefs）与补充需求（notes）控制行程节奏。\n5. 输出限制：只输出每日行程 JSON，不要在内容中出现“本行程基于优先交通方案生成”“基于首推住宿片区规划”等说明性文字，这类提示由前端统一展示。`;
