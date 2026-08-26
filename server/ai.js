@@ -158,6 +158,68 @@ function normalizeLodgingModule(raw, destCity) {
   return { areas, disclaimer };
 }
 
+function parsePriceMid(text) {
+  const nums = String(text || '').match(/\d+(?:\.\d+)?/g);
+  if (!nums || !nums.length) return 480;
+  const values = nums.map(Number);
+  return Math.round((Math.min(...values) + Math.max(...values)) / 2);
+}
+
+function lockedLodgingPrompt(area) {
+  const name = (area && area.name) || '市中心';
+  const price = area ? parsePriceMid(area.priceRange) : 480;
+  return `【本次生成强制锁定参数】\n首推住宿片区：${name}，参考价格：${price}元/晚\n硬性约束：生成全程所有夜晚住宿卡片片区必须统一为此片区，禁止AI中途擅自更换其他住宿片区。`;
+}
+
+function normalizeLockedArea(area) {
+  const name = (area && area.name) || '市中心';
+  const price = area ? parsePriceMid(area.priceRange) : 480;
+  const tag = (area && area.tag) || '核心区';
+  return {
+    name,
+    area: name,
+    type: '酒店',
+    price,
+    desc: (area && area.pros) || `${name}周边住宿，出行便利。`,
+    tags: [tag, '首推'],
+    hotelExamples: (area && area.hotelExamples) || `${name}商务酒店`,
+    priceRange: (area && area.priceRange) || `约 ¥${price - 150} - ¥${price + 150}/晚`
+  };
+}
+
+function correctLodgingBinding(plan, lockedArea) {
+  if (!plan || !Array.isArray(plan.days)) return { corrected: false, count: 0 };
+  const target = normalizeLockedArea(lockedArea);
+  let corrected = false;
+  let count = 0;
+  plan.days.forEach((day, index) => {
+    if (index === plan.days.length - 1) {
+      day.lodgingArea = '';
+      day.lodgingDesc = '';
+      day.lodgingType = '';
+      day.lodgingTags = [];
+      day.lodgingPrice = 0;
+      day.lodging = 0;
+      return;
+    }
+    const current = day.lodgingArea || (day.lodging && day.lodging.area) || '';
+    if (current && current !== target.area) {
+      corrected = true;
+      count += 1;
+    }
+    day.lodgingArea = target.area;
+    day.lodgingDesc = target.desc;
+    day.lodgingType = target.type;
+    day.lodgingTags = target.tags;
+    day.lodgingPrice = target.price;
+  });
+  plan.lodging = target;
+  if (corrected) {
+    console.warn(`[路书] 住宿锁定校正：模型住宿输出与锁定片区不一致，已强制校正为「${target.area}」，共校正 ${count} 天。`);
+  }
+  return { corrected, count };
+}
+
 function monthFromDateStr(dateStr) {
   if (!dateStr) return null;
   const matched = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(dateStr).trim());
@@ -210,7 +272,7 @@ const SYSTEM_PROMPT = `你是一位专业的旅行行程规划师。根据用户
 4. 预算要落在用户预算区间内，住宿和交通费用单列。
 5. 结合用户核心偏好（美食/历史/自然/休闲，最多两项）分配重点：美食偏好多安排当地特色餐饮，历史偏好多安排古迹博物馆，自然偏好多安排山水公园，休闲偏好节奏放慢、少排队。
 6. 只输出每日行程 JSON，不要在 JSON 中输出任何规划说明性文字（例如“本行程基于优先交通方案生成”“以上安排仅供参考”），这类说明由前端页面统一展示。
-7. 最后一天（返程日）只安排上午景点、早餐或午餐，所有游玩项目必须在 12:00 前结束；禁止生成下午、晚餐、夜晚、夜景、夜晚漫步等项目。
+7. 最后一天（返程日）只安排上午景点、早餐或午餐，所有游玩项目必须在 12:00 前结束；禁止生成下午、晚餐、夜晚、夜景、夜晚漫步等项目；最后一晚不安排住宿、不产生住宿费用。
 
 JSON 结构：
 {
@@ -258,8 +320,9 @@ function normalizeAiPlan(raw, form) {
         cat
       };
     });
-    const lodging = day.lodging || raw.lodging;
-    const lodgingPrice = lodging ? Math.max(100, Math.round(Number(lodging.price) || 0)) : 400;
+    const isLastDay = index === raw.days.length - 1;
+    const lodging = isLastDay ? null : (day.lodging || raw.lodging);
+    const lodgingPrice = lodging ? Math.max(100, Math.round(Number(lodging.price) || 0)) : 0;
     const transport = Math.max(0, Math.round(Number(day.transport) || 100));
     const itemsCost = items.reduce((sum, item) => sum + item.cost, 0);
     return {
@@ -268,6 +331,10 @@ function normalizeAiPlan(raw, form) {
       area: String(day.area || '市中心'),
       items,
       lodging: lodgingPrice,
+      lodgingArea: !isLastDay && lodging && lodging.area ? String(lodging.area).trim() : '',
+      lodgingDesc: !isLastDay && lodging && lodging.desc ? String(lodging.desc).trim() : '',
+      lodgingType: !isLastDay && lodging && lodging.type ? String(lodging.type).trim() : '酒店',
+      lodgingTags: !isLastDay && Array.isArray(lodging && lodging.tags) ? lodging.tags.map(String) : [],
       transport,
       baseTransport: transport,
       cost: itemsCost + lodgingPrice + transport
@@ -430,6 +497,8 @@ async function generateWithDeepSeek(form) {
   framework.transport = buildTransportByDistance(form.departCity, form.destination);
   // 住宿片区规范化为 { areas, disclaimer }，空值一律触发程序化兜底
   framework.lodgingAreas = normalizeLodgingModule(framework.lodgingAreas, form.destination);
+  const lockedArea = framework.lodgingAreas.areas[0];
+  const lockedBlock = lockedLodgingPrompt(lockedArea);
   // 天气穿衣统一从全局上下文读取出发日期月份，程序化生成，不使用模型独立文案
   const seasonalGuide = buildSeasonalGuide(globalContext);
   framework.guide = {
@@ -440,14 +509,15 @@ async function generateWithDeepSeek(form) {
 
   // 第二步：生成每日详细行程，框架作为硬性约束
   const stepFramework = { ...framework, lodgingAreas: framework.lodgingAreas.areas };
-  const dailyContent = userContent + `\n\n以下是已确定的顶层规划框架，必须作为硬性约束严格执行：\n${JSON.stringify(stepFramework)}\n\n硬性约束：\n1. 交通基准：只采用 transport.plans 中 isBackup=false 的优先方案。第一天行程强度必须匹配该方案的 arriveTime（如下午抵达则第一天只安排傍晚/夜间活动，不安排上午项目）；最后一天根据 departTime 预留充足返程缓冲时间，不安排卡点游玩项目。备选交通方案仅用于页面展示，不参与行程计算。\n2. 区位基准：以 lodgingAreas 数组中第一条作为游玩中心点，每日景点和就餐点位就近围绕该片区排布，减少远距离往返奔波。\n3. 美食约束：每日午餐/晚餐优先采用 foodList 中的美食，并优先选择靠近中心住宿片区的就餐街区。\n4. 基础约束：严格控制在表单预算上下限内，结合出行偏好（prefs）与补充需求（notes）控制行程节奏。\n5. 输出限制：只输出每日行程 JSON，不要在内容中出现“本行程基于优先交通方案生成”“基于首推住宿片区规划”等说明性文字，这类提示由前端统一展示。\n6. 返程日约束：最后一天只安排上午景点、早餐或午餐，所有游玩项目必须在 12:00 前结束；禁止生成下午、晚餐、夜晚、夜景、夜晚漫步等项目；返程大交通卡片由前端统一生成，不要在 JSON 中输出返程条目。`;
+  const dailyContent = userContent + `\n\n以下是已确定的顶层规划框架，必须作为硬性约束严格执行：\n${JSON.stringify(stepFramework)}\n\n${lockedBlock}\n\n硬性约束：\n1. 交通基准：只采用 transport.plans 中 isBackup=false 的优先方案。第一天行程强度必须匹配该方案的 arriveTime（如下午抵达则第一天只安排傍晚/夜间活动，不安排上午项目）；最后一天根据 departTime 预留充足返程缓冲时间，不安排卡点游玩项目。备选交通方案仅用于页面展示，不参与行程计算。\n2. 区位基准：以 lodgingAreas 数组中第一条作为游玩中心点，每日景点和就餐点位就近围绕该片区排布，减少远距离往返奔波。\n3. 美食约束：每日午餐/晚餐优先采用 foodList 中的美食，并优先选择靠近中心住宿片区的就餐街区。\n4. 基础约束：严格控制在表单预算上下限内，结合出行偏好（prefs）与补充需求（notes）控制行程节奏。\n5. 输出限制：只输出每日行程 JSON，不要在内容中出现“本行程基于优先交通方案生成”“基于首推住宿片区规划”等说明性文字，这类提示由前端统一展示。\n6. 返程日约束：最后一天只安排上午景点、早餐或午餐，所有游玩项目必须在 12:00 前结束；禁止生成下午、晚餐、夜晚、夜景、夜晚漫步等项目；最后一晚不安排住宿、不产生住宿费用，不要输出住宿条目；返程大交通卡片由前端统一生成，不要在 JSON 中输出返程条目。`;
   const raw = await callDeepSeek([
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: dailyContent }
   ], 6000);
   const plan = normalizeAiPlan(raw, form);
+  correctLodgingBinding(plan, lockedArea);
   plan.framework = framework;
   plan.globalContext = globalContext;
   return plan;
 }
-module.exports = { generateWithDeepSeek, buildSeasonalGuide, monthFromDateStr };
+module.exports = { generateWithDeepSeek, buildSeasonalGuide, monthFromDateStr, lockedLodgingPrompt, correctLodgingBinding, normalizeLockedArea };
