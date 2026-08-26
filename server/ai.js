@@ -158,6 +158,49 @@ function normalizeLodgingModule(raw, destCity) {
   return { areas, disclaimer };
 }
 
+function monthFromDateStr(dateStr) {
+  if (!dateStr) return null;
+  const matched = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(dateStr).trim());
+  if (matched) return parseInt(matched[2], 10);
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getMonth() + 1;
+}
+
+function buildSeasonalGuide(ctx) {
+  ctx = ctx || {};
+  const dest = String(ctx.destination || '当地');
+  const month = monthFromDateStr(ctx.startDate);
+  if (!month) {
+    return {
+      weather: '出行季节气候预判，请结合出行日期查询目的地实时天气。',
+      clothing: '建议以舒适轻便为主，备一件外套应对室内外温差，具体衣物请结合实时天气调整。'
+    };
+  }
+  if (month >= 3 && month <= 5) {
+    return {
+      weather: `${dest}当地${month}月处于春季，常年温和多雨，气温约 10-22℃，日照中等，出行建议备好雨伞与薄外套。`,
+      clothing: '建议携带薄外套、长袖单衣与雨伞，应对春季昼夜温差和阵雨。'
+    };
+  }
+  if (month >= 6 && month <= 8) {
+    return {
+      weather: `${dest}当地${month}月处于夏季，常年炎热多雨，气温约 26-35℃，午后多雷阵雨，日照强烈，注意防晒补水。`,
+      clothing: '建议携带防晒衣、遮阳帽、雨伞与防晒霜，衣物以透气速干为主。'
+    };
+  }
+  if (month >= 9 && month <= 11) {
+    return {
+      weather: `${dest}当地${month}月处于秋季，常年凉爽舒适、降水减少，气温约 15-27℃，昼夜温差明显，适合早晚加一件外套。`,
+      clothing: '建议携带轻薄外套与长裤，早晚添衣、午后减衣，防晒和雨具各备一件。'
+    };
+  }
+  return {
+    weather: `${dest}当地${month}月处于冬季，常年寒冷湿冷，气温约 2-10℃，阴雨偏多、日照偏少，注意保暖防滑。`,
+    clothing: '建议携带保暖外套、毛衣、围巾与防滑鞋，怕冷可加保暖内衣。'
+  };
+}
+
 const SYSTEM_PROMPT = `你是一位专业的旅行行程规划师。根据用户提供的出行信息，生成一份真实、合理、可直接使用的每日行程。
 
 要求：
@@ -366,6 +409,13 @@ async function generateWithDeepSeek(form) {
     userContent += `\n\n补充需求已解析为以下约束标签，生成时请纳入考虑：${form.parsedTags.join('、')}`;
   }
 
+  const globalContext = {
+    destination: String(form.destination || ''),
+    startDate: String(form.startDate || ''),
+    endDate: String(form.endDate || ''),
+    month: monthFromDateStr(form.startDate)
+  };
+
   // 第一步：生成顶层规划框架
   const framework = await callDeepSeek([
     { role: 'system', content: FRAMEWORK_PROMPT },
@@ -375,6 +425,13 @@ async function generateWithDeepSeek(form) {
   framework.transport = buildTransportByDistance(form.departCity, form.destination);
   // 住宿片区规范化为 { areas, disclaimer }，空值一律触发程序化兜底
   framework.lodgingAreas = normalizeLodgingModule(framework.lodgingAreas, form.destination);
+  // 天气穿衣统一从全局上下文读取出发日期月份，程序化生成，不使用模型独立文案
+  const seasonalGuide = buildSeasonalGuide(globalContext);
+  framework.guide = {
+    ...(framework.guide || {}),
+    weather: seasonalGuide.weather,
+    clothing: seasonalGuide.clothing
+  };
 
   // 第二步：生成每日详细行程，框架作为硬性约束
   const stepFramework = { ...framework, lodgingAreas: framework.lodgingAreas.areas };
@@ -385,6 +442,7 @@ async function generateWithDeepSeek(form) {
   ], 6000);
   const plan = normalizeAiPlan(raw, form);
   plan.framework = framework;
+  plan.globalContext = globalContext;
   return plan;
 }
-module.exports = { generateWithDeepSeek };
+module.exports = { generateWithDeepSeek, buildSeasonalGuide, monthFromDateStr };
