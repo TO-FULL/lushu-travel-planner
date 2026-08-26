@@ -3039,22 +3039,19 @@ button {
   }
 }
 
-.constraint-note {
-  grid-column: 1 / -1;
-  padding: 10px 14px;
-  border: 1px solid rgba(15, 107, 91, 0.25);
-  border-radius: 10px;
-  background: rgba(15, 107, 91, 0.08);
-  color: var(--green-deep);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.5;
-}
-
 .guide-note {
   display: block;
   margin-top: 6px;
   color: var(--muted);
   font-size: 11px;
   font-style: normal;
+}
+
+.planning-note {
+  margin: 18px 0;
+  color: #666666;
+  font-size: 13px;
+  line-height: 1.5;
+  width: fit-content;
+  text-align: left;
 }
