@@ -970,9 +970,10 @@
     if (!container) return;
     const framework = plan.framework || buildLocalFramework(plan);
     const transportPlans = (framework.transport && framework.transport.plans) || [];
-    const lodgingAreas = (framework.lodgingAreas && framework.lodgingAreas.length)
-      ? framework.lodgingAreas
-      : buildLocalFramework(plan).lodgingAreas;
+    const lodgingModule = framework.lodgingAreas || {};
+    const rawAreas = Array.isArray(lodgingModule) ? lodgingModule : lodgingModule.areas;
+    const lodgingAreas = rawAreas && rawAreas.length ? rawAreas : buildLocalFramework(plan).lodgingAreas.areas;
+    const lodgingDisclaimer = (!Array.isArray(lodgingModule) && lodgingModule.disclaimer) || '酒店价格仅为规划参考，实际预订价格请以酒店平台实时信息为准。';
     const foodList = framework.foodList || [];
     container.innerHTML = `
       <div class="tp-section tp-transport">
@@ -1016,7 +1017,7 @@
               <span class="tp-example">示例：${a.hotelExamples || '平台搜索'}</span>
             </div>`).join('')}
         </div>
-        <p class="tp-disclaimer">酒店价格仅为规划参考，实际预订价格请以酒店平台实时信息为准。</p>
+        <p class="tp-disclaimer">${lodgingDisclaimer}</p>
       </div>
       <div class="tp-section tp-food">
         <div class="tp-head">
@@ -1133,14 +1134,17 @@
     const departCity = (lastForm && lastForm.departCity) || '出发城市';
     return {
       transport: buildLocalTransport(departCity, plan.destination),
-      lodgingAreas: lodgingPool.slice(0, 4).map(item => ({
-        name: item.area,
-        tag: /湖|江|海|河/.test(item.area) ? '滨水' : (/古|老|老街/.test(item.area) ? '老城区' : (/中心|广场|商圈/.test(item.area) ? '市中心' : '核心区')),
-        priceRange: `约 ${fmtMoney(item.price)}/晚`,
-        pros: item.desc,
-        cons: '节假日价格会明显上浮',
-        hotelExamples: item.name
-      })),
+      lodgingAreas: {
+        areas: lodgingPool.slice(0, 4).map(item => ({
+          name: item.area,
+          tag: /湖|江|海|河/.test(item.area) ? '滨水' : (/古|老|老街/.test(item.area) ? '老城区' : (/中心|广场|商圈/.test(item.area) ? '市中心' : '核心区')),
+          priceRange: `约 ${fmtMoney(item.price)}/晚`,
+          pros: item.desc,
+          cons: '节假日价格会明显上浮',
+          hotelExamples: item.name
+        })),
+        disclaimer: '酒店价格仅为规划参考，实际预订价格请以酒店平台实时信息为准。'
+      },
       foodList: foodPool.slice(0, 6).map(item => ({
         name: item.name,
         area: item.area,
