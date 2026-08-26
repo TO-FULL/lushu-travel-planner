@@ -1177,6 +1177,68 @@
     };
   }
 
+  function isReturnEntry(item) {
+    return !!(item && item.cat === 'transport' && /返程/.test(String(item.name || '')));
+  }
+
+  function returnPlacementFor(plan) {
+    const timeText = String(plan.returnTime || ((lastForm && lastForm.returnTime) || '')).trim();
+    if (timeText) {
+      const matched = /(\d{1,2})[:：时]?(\d{2})?/.exec(timeText);
+      if (matched) return parseInt(matched[1], 10) <= 12 ? 'top' : 'bottom';
+    }
+    return 'bottom';
+  }
+
+  function buildReturnItem(plan) {
+    const framework = plan.framework || buildLocalFramework(plan);
+    const primary = (framework.transport && framework.transport.plans || []).find(p => !p.isBackup) || (framework.transport && framework.transport.plans || [])[0];
+    const mode = primary ? primary.mode : '高铁/飞机';
+    const departTime = (primary && primary.departTime) || '返程当天';
+    const knownTime = String(plan.returnTime || ((lastForm && lastForm.returnTime) || '')).trim();
+    const tip = knownTime ? '' : '建议预留充足时间前往车站/机场，可根据你的车次自行向上拖动调整顺序。';
+    const desc = knownTime ? `返程大交通按 ${knownTime} 出发，请提前抵达车站/机场。` : `按${mode}方案${departTime}出发返程。${tip}`;
+    return {
+      name: '返程大交通',
+      area: '车站/机场',
+      cost: 0,
+      duration: 0,
+      desc,
+      tags: ['返程', '大交通'],
+      slotLabel: '返程',
+      time: knownTime || departTime,
+      cat: 'transport',
+      fixed: false
+    };
+  }
+
+  function ensureReturnEntry(plan) {
+    if (!plan || !Array.isArray(plan.days) || !plan.days.length) return plan;
+    const lastDay = plan.days[plan.days.length - 1];
+    if (!lastDay || !Array.isArray(lastDay.items)) return plan;
+    const existing = lastDay.items.find(isReturnEntry);
+    const item = buildReturnItem(plan);
+    if (existing) {
+      existing.name = item.name;
+      existing.area = item.area;
+      existing.cost = item.cost;
+      existing.duration = item.duration;
+      existing.desc = item.desc;
+      existing.tags = item.tags;
+      existing.slotLabel = item.slotLabel;
+      existing.time = item.time;
+      existing.cat = item.cat;
+      existing.fixed = false;
+      return plan;
+    }
+    if (returnPlacementFor(plan) === 'top') {
+      lastDay.items.unshift(item);
+    } else {
+      lastDay.items.push(item);
+    }
+    return plan;
+  }
+
   function buildLocalTransport(departCity, destCity) {
     const a = resolveFrontCityCoord(departCity);
     const b = resolveFrontCityCoord(destCity);
@@ -1290,6 +1352,7 @@ function tipFor(plan) {
 
   function itemHTML(plan, item, dayIndex, itemIndex, prevItem) {
     const fixed = Boolean(item.fixed);
+    const isReturn = isReturnEntry(item);
     let transferText = '';
     if (!fixed && prevItem) {
       const city = cityFor(plan);
@@ -1320,7 +1383,7 @@ function tipFor(plan) {
                   <svg class="checked" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>
                 </button>`}
               <span class="item-cost">${item.cost ? fmtMoney(item.cost) : '免费'}</span>
-              ${fixed ? '' : `
+              ${fixed || isReturn ? '' : `
                 <button class="item-delete" type="button" data-day="${dayIndex}" data-index="${itemIndex}" aria-label="删除 ${item.name}">
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>
                 </button>`}
@@ -1357,22 +1420,8 @@ function tipFor(plan) {
       fixed: true
     };
     const isLastDay = index === plan.days.length - 1;
-    const framework = plan.framework || buildLocalFramework(plan);
-    const primaryTransport = (framework.transport && framework.transport.plans || []).find(p => !p.isBackup) || (framework.transport && framework.transport.plans || [])[0];
-    const departTime = (primaryTransport && primaryTransport.departTime) || '上午';
     const stayInfo = lodgingForPlan(plan);
-    const stayItem = isLastDay ? {
-      name: '返程预留',
-      area: '返程',
-      cost: 0,
-      duration: 0,
-      desc: `建议按优先方案在${departTime}出发返程，预留充足时间前往车站/机场。`,
-      tags: ['返程', '预留'],
-      slotLabel: '返程',
-      time: departTime,
-      cat: 'transport',
-      fixed: true
-    } : {
+    const stayItem = {
       name: lodgingDisplayName(stayInfo),
       area: stayInfo.area,
       cost: day.lodging,
@@ -1384,9 +1433,13 @@ function tipFor(plan) {
       cat: 'stay',
       fixed: true
     };
-    const editableItems = day.items;
+    const editableItems = day.items.slice();
     const truncated = editableItems.length > 14 && !day._expanded;
-    const shownItems = truncated ? editableItems.slice(0, 14) : editableItems;
+    let shownItems = truncated ? editableItems.slice(0, 14) : editableItems;
+    if (truncated && isLastDay) {
+      const hiddenReturns = editableItems.slice(14).filter(isReturnEntry);
+      if (hiddenReturns.length) shownItems = shownItems.concat(hiddenReturns);
+    }
     const mode = plan.transportMode && plan.transportMode[index] ? plan.transportMode[index] : 'transit';
     const itemsHTML = [
       itemHTML(plan, topItem, index, -1),
@@ -1394,7 +1447,7 @@ function tipFor(plan) {
         const prevItem = itemIndex > 0 ? shownItems[itemIndex - 1] : topItem;
         return itemHTML(plan, item, index, itemIndex, prevItem);
       }),
-      itemHTML(plan, stayItem, index, -2)
+      ...(isLastDay ? [] : [itemHTML(plan, stayItem, index, -2)])
     ].join('');
     return `
       <details class="day-card" data-day="${index}" ${index === 0 ? 'open' : ''}>
@@ -1863,6 +1916,7 @@ function tipFor(plan) {
 
   function dedupePlan(plan) {
     if (!plan || !plan.days) return plan;
+    ensureReturnEntry(plan);
     const city = cityFor(plan);
     const seen = new Set();
     const placeholderNames = new Set(['酒店附近早餐', '沿途简餐', '简单晚餐', '市内交通预留', '住宿预留']);
